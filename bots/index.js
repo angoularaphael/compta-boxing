@@ -401,6 +401,23 @@ function mediaMeta(msg) {
   return null;
 }
 
+function formatDateTimeFr(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString('fr-FR', {
+      timeZone: 'Europe/Paris',
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return null;
+  }
+}
+
 function formatUploadError(err) {
   const status = err?.response?.status;
   if (status === 504) {
@@ -510,14 +527,16 @@ async function handleMediaMessage(msg, options = {}) {
       });
     } else {
       const inv = result.invoice || {};
-      const ocrNote = result.ocrPending ? '\n🔍 Montant/date : analyse en cours…' : null;
+      const receivedAt = formatDateTimeFr(inv.created_at);
+      const ocrNote = result.ocrPending ? '🔍 Analyse Groq en cours…' : null;
       await sock.sendMessage(msg.key.remoteJid, {
         text: [
           `✅ Facture enregistrée — ${LOCATION_NAME}`,
-          inv.invoice_date ? `📅 ${inv.invoice_date}` : null,
+          receivedAt ? `🕐 Reçu le ${receivedAt}` : null,
+          inv.invoice_date ? `📅 Date facture : ${inv.invoice_date}` : null,
           inv.amount_ttc != null ? `💶 ${Number(inv.amount_ttc).toFixed(2)} €` : null,
           inv.vendor_name ? `🏢 ${inv.vendor_name}` : null,
-          `📁 Mois : ${inv.accounting_month || '—'}`,
+          `📁 Mois comptable : ${inv.accounting_month || '—'}`,
           ocrNote,
         ]
           .filter(Boolean)
