@@ -100,3 +100,65 @@
 .badge-compta-ok { background: var(--ok-bg); color: var(--ok); }
 .badge-compta-warn { background: #fef3c7; color: #b45309; }
 .badge-compta-err { background: var(--err-bg); color: var(--err); }
+
+.compta-guide {
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border-color: #bfdbfe;
+}
+
+.compta-steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.compta-steps--big li {
+  margin-bottom: 0.65rem;
+}
+
+.compta-steps--big li:last-child {
+  margin-bottom: 0;
+}
+
+.compta-bots-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 900px) {
+  .compta-bots-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.compta-bot-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.compta-bot-card-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.compta-qr-wrap {
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.compta-qr-img {
+  max-width: 260px;
+  width: 100%;
+  border-radius: 12px;
+  border: 4px solid #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+}
+
+.compta-bot-help {
+  font-size: 0.9rem;
+  color: var(--muted);
+}

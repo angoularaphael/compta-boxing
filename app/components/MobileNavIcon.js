@@ -18,6 +18,22 @@ export default function MobileNavIcon({ name, active = false }) {
           <path d="M17 12l3 3-3 3" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
+    case 'whatsapp':
+      return (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M12 3a8 8 0 0 0-6.9 12.1L4 21l5.9-1.5A8 8 0 1 0 12 3z"
+            stroke={stroke}
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path d="M9.5 10.5c.4 1.1 1.4 2.1 2.5 2.5l1-1a1 1 0 0 1 1-.2c.4.1.9.2 1.3.2a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1A9 9 0 0 1 8 9a1 1 0 0 1 1-1h1.3a1 1 0 0 1 1 1c0 .4.1.9.2 1.3a1 1 0 0 1-.2 1l-1 1z"
+            stroke={stroke}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
     case 'logout':
       return (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
