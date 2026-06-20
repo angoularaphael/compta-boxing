@@ -4,6 +4,9 @@
     "app/api/bots/[slug]/route.js": {
       "maxDuration": 30
     },
+    "app/api/invoices/route.js": {
+      "maxDuration": 60
+    },
     "app/api/webhook/whatsapp/route.js": {
       "maxDuration": 60
     },

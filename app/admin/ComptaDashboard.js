@@ -5,6 +5,14 @@ import { useCallback, useEffect, useState } from 'react';
 import ActionButton from '../components/ActionButton';
 import { LOCATION_LABELS, LOCATION_SLUGS, currentAccountingMonth } from '../../lib/locations';
 import { parseApiJson } from '../../lib/apiJson';
+import { formatDateTimeFr } from '../../lib/datetime-fr';
+
+const OCR_LABELS = {
+  pending: 'Analyse…',
+  ok: 'OK',
+  partial: 'Partiel',
+  failed: 'Échec',
+};
 
 export default function ComptaDashboard() {
   const [location, setLocation] = useState(LOCATION_SLUGS[0]);
@@ -35,6 +43,13 @@ export default function ComptaDashboard() {
   }, [location, month]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const hasPending = invoices.some((inv) => inv.ocr_status === 'pending');
+    if (!hasPending) return undefined;
+    const timer = setInterval(() => { load(); }, 5000);
+    return () => clearInterval(timer);
+  }, [invoices, load]);
 
   async function uploadInvoice(e) {
     const file = e.target.files?.[0];
@@ -152,25 +167,29 @@ export default function ComptaDashboard() {
           <table className="table">
             <thead>
               <tr>
-                <th>Date</th>
+                <th>Reçu le</th>
+                <th>Date facture</th>
                 <th>Fournisseur</th>
                 <th>Montant</th>
+                <th>Analyse</th>
                 <th>Fichier</th>
               </tr>
             </thead>
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted">
+                  <td colSpan={6} className="muted">
                     Aucune facture pour l&apos;instant. Le client peut en envoyer sur WhatsApp.
                   </td>
                 </tr>
               )}
               {invoices.map((inv) => (
                 <tr key={inv.id}>
+                  <td>{formatDateTimeFr(inv.created_at)}</td>
                   <td>{inv.invoice_date || '—'}</td>
                   <td>{inv.vendor_name || '—'}</td>
                   <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
+                  <td>{OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}</td>
                   <td>{inv.file_name}</td>
                 </tr>
               ))}

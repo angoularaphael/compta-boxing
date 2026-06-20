@@ -3,7 +3,11 @@ import { requireSession } from '../../../lib/api-auth';
 import { apiError } from '../../../lib/apiJson';
 import { getSupabase } from '../../../lib/supabase';
 import { parseAccountingMonth } from '../../../lib/locations';
-import { ingestInvoiceFile } from '../../../lib/invoices';
+import { ingestInvoiceFile, applyInvoiceOcr } from '../../../lib/invoices';
+import { waitUntil } from '@vercel/functions';
+
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
@@ -49,16 +53,21 @@ export async function POST(request) {
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const fileName = file.name || 'facture.pdf';
+    const mimeType = file.type || 'application/pdf';
     const invoice = await ingestInvoiceFile({
       locationId: location.id,
       locationSlug,
       buffer,
-      fileName: file.name || 'facture.pdf',
-      mimeType: file.type || 'application/pdf',
+      fileName,
+      mimeType,
       source: 'upload',
+      deferOcr: true,
     });
 
-    return NextResponse.json({ invoice });
+    waitUntil(applyInvoiceOcr(invoice.id, buffer, mimeType, fileName));
+
+    return NextResponse.json({ invoice, ocrPending: true });
   } catch (err) {
     return apiError(err);
   }
