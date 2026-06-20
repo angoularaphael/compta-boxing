@@ -65,7 +65,6 @@ function BotCard({ bot }) {
             connecting: true,
             error: null,
             qr: null,
-            hint: data.hint || s.hint || null,
           }));
         }
       } catch (err) {
@@ -161,9 +160,6 @@ function BotCard({ bot }) {
               <li>Dans Supabase : renseigner <code>bot_url</code> pour cette salle</li>
               <li>Ou sur Vercel : variable <code>{`BOT_URL_${bot.slug.toUpperCase()}`}</code></li>
             </ol>
-          ) : null}
-          {status.hint ? (
-            <p className="compta-bot-hint-warn">{status.hint}</p>
           ) : null}
         </div>
       ) : null}
