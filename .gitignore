@@ -5,4 +5,5 @@ node_modules/
 .env*.local
 bots/auth/
 bots/.env
+bots/deploy/**/.env
 *.log
