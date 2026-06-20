@@ -3,7 +3,7 @@ import './globals.css';
 import './compta.css';
 
 export const metadata = {
-  title: 'Compta Boxing — 4 salles',
+  title: 'Compta Boxing — 3 salles',
   description: 'Factures d\'achat WhatsApp, rapprochement bancaire, export comptable',
   applicationName: 'Compta Boxing',
   appleWebApp: {

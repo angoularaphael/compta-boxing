@@ -1,4 +1,4 @@
--- Compta Boxing — 4 salles, factures d'achat, relevés, rapprochement
+-- Compta Boxing — 3 salles, factures d'achat, relevés, rapprochement
 
 CREATE TABLE IF NOT EXISTS app_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -22,8 +22,7 @@ CREATE TABLE IF NOT EXISTS locations (
 );
 
 INSERT INTO locations (slug, name) VALUES
-  ('minimes', 'Minimes'),
-  ('etats_unis', 'États-Unis'),
+  ('minimes', 'Minimes / États-Unis'),
   ('st_cyprien', 'Saint-Cyprien'),
   ('ramonville', 'Ramonville')
 ON CONFLICT (slug) DO NOTHING;

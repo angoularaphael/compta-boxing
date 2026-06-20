@@ -26,7 +26,7 @@ export default function WelcomeSplash({ phase }) {
         <p className="welcome-splash__eyebrow">Bienvenue dans</p>
         <h1 className="welcome-splash__title">
           Compta Boxing
-          <span>4 salles</span>
+          <span>3 salles</span>
         </h1>
         <p className="welcome-splash__tagline">Factures & rapprochement bancaire</p>
 

@@ -1,4 +1,4 @@
-# Compta Boxing — 4 salles
+# Compta Boxing — 3 salles
 
 Collecte de factures d'achat via WhatsApp (4 bots), rapprochement bancaire et export mensuel pour le comptable.
 
@@ -13,10 +13,9 @@ Collecte de factures d'achat via WhatsApp (4 bots), rapprochement bancaire et ex
 
 | Slug | Nom | Bot |
 |------|-----|-----|
-| `minimes` | Minimes | port 3011 |
-| `etats_unis` | États-Unis | port 3012 |
-| `st_cyprien` | Saint-Cyprien | port 3013 |
-| `ramonville` | Ramonville | port 3014 |
+| `minimes` | Minimes / États-Unis | port 3011 |
+| `st_cyprien` | Saint-Cyprien | port 3012 |
+| `ramonville` | Ramonville | port 3013 |
 
 ## Installation locale
 
@@ -33,7 +32,8 @@ App : http://localhost:3020
 ## Supabase
 
 1. Exécuter [`supabase/migrations/001_compta.sql`](supabase/migrations/001_compta.sql)
-2. Créer les buckets Storage (voir [`002_storage_buckets.md`](supabase/migrations/002_storage_buckets.md)) :
+2. Si la base existait déjà avec 4 salles : exécuter [`003_three_locations.sql`](supabase/migrations/003_three_locations.sql)
+3. Créer les buckets Storage (voir [`002_storage_buckets.md`](supabase/migrations/002_storage_buckets.md)) :
    - `compta-invoices`
    - `compta-statements`
    - `compta-exports`
@@ -51,7 +51,7 @@ WHATSAPP_WEBHOOK_SECRET=
 
 ## Bots WhatsApp (Bothosting) — configuration
 
-**4 instances séparées** (1 numéro WhatsApp = 1 salle = 1 serveur Bothosting).
+**3 instances séparées** (1 numéro WhatsApp = 1 salle = 1 serveur Bothosting).
 
 ### Étape 1 — Vercel en production
 
@@ -67,10 +67,9 @@ WHATSAPP_WEBHOOK_SECRET=3Giffareno237
 
 | Salle | Port suggéré | Fichier modèle |
 |-------|--------------|----------------|
-| Minimes | 3011 | `bots/env/minimes.env.example` |
-| États-Unis | 3012 | `bots/env/etats_unis.env.example` |
-| Saint-Cyprien | 3013 | `bots/env/st_cyprien.env.example` |
-| Ramonville | 3014 | `bots/env/ramonville.env.example` |
+| Minimes / États-Unis | 3011 | `bots/env/minimes.env.example` |
+| Saint-Cyprien | 3012 | `bots/env/st_cyprien.env.example` |
+| Ramonville | 3013 | `bots/env/ramonville.env.example` |
 
 Sur chaque serveur :
 ```bash
@@ -84,7 +83,7 @@ npm start
 
 ```env
 LOCATION_SLUG=minimes
-LOCATION_NAME=Minimes
+LOCATION_NAME=Minimes / États-Unis
 PORT=3011
 
 COMPTA_WEBHOOK_URL=https://compta-boxing.vercel.app
@@ -100,7 +99,7 @@ Ouvrir dans le navigateur :
 ```
 http://<ip-bothosting>:3011/api/qr
 ```
-Scanner avec le téléphone de la salle concernée. Répéter pour les 4 ports.
+Scanner avec le téléphone de la salle concernée. Répéter pour les 3 ports.
 
 Vérifier : `http://<ip>:3011/api/health` → `"connected": true`
 
@@ -129,7 +128,7 @@ Le bot répond automatiquement : facture reçue, date, montant, mois comptable.
 
 ## Usage client
 
-1. Enregistrer 4 contacts WhatsApp (un par salle)
+1. Enregistrer 3 contacts WhatsApp (un par salle)
 2. Photographier / envoyer chaque facture sur le bon numéro
 3. Back-office : importer le relevé, lancer **Auto-rapprocher**, corriger manuellement si besoin
 4. **Exporter le mois** → ZIP pour le comptable

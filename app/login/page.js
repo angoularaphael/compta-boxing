@@ -42,7 +42,7 @@ export default function LoginPage() {
         <aside className="ik-login-brand">
           <Image src="/logo.svg" alt="Boxing Center" width={220} height={62} className="ik-login-logo" priority />
           <h1>Compta Boxing</h1>
-          <p>Factures d&apos;achat — 4 salles</p>
+          <p>Factures d&apos;achat — 3 salles</p>
           <ul className="ik-login-features">
             <li>Collecte WhatsApp par salle</li>
             <li>Rapprochement relevé bancaire</li>

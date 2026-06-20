@@ -1,6 +1,6 @@
 export default function manifest() {
   return {
-    name: 'Compta Boxing — 4 salles',
+    name: 'Compta Boxing — 3 salles',
     short_name: 'Compta Boxing',
     description: 'Factures d\'achat, rapprochement bancaire, export comptable',
     start_url: '/',
