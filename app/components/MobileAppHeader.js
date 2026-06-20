@@ -17,7 +17,10 @@ export default function MobileAppHeader() {
       </div>
 
       <div className="mobile-app-actions">
-        <Link href="/admin" className="mobile-icon-btn" aria-label="Tableau de bord">
+        <Link href="/admin/whatsapp" className="mobile-icon-btn" aria-label="WhatsApp">
+          <MobileNavIcon name="whatsapp" active={pathname === '/admin/whatsapp'} />
+        </Link>
+        <Link href="/admin" className="mobile-icon-btn" aria-label="Factures">
           <MobileNavIcon name="dashboard" active={pathname === '/admin'} />
         </Link>
         <LogoutButton variant="icon" />
