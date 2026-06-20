@@ -129,7 +129,7 @@ Le bot répond automatiquement : facture reçue, date, montant, mois comptable.
 
 - **Secret invalide** → vérifier `WHATSAPP_WEBHOOK_SECRET` identique Vercel + bot
 - **Numéro non autorisé** → admin envoie `.setsudo VOTRE_NUMERO` ou ajouter dans `ALLOWED_PHONES`
-- **Bucket error** → créer les buckets Supabase Storage
+- **Session WhatsApp perdue au redémarrage** → la session est stockée dans `bot-data/` (à côté du `.env`, hors du clone git). Ne supprimer que via **Déconnecter** dans l'app. Un simple redémarrage Bothosting reconnecte automatiquement.
 - **OCR vide** → normal sur photo floue ; corriger dans le back-office
 
 ## Déploiement Vercel

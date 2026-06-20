@@ -45,8 +45,13 @@ const ENV_ALLOWED_PHONES = String(process.env.ALLOWED_PHONES || '')
   .map(normalizePhone)
   .filter(isValidPhoneDigits);
 
-const AUTH_DIR = path.join(__dirname, 'auth', LOCATION_SLUG || 'default');
-const SUDO_CONFIG_FILE = path.join(AUTH_DIR, 'sudo-phones.json');
+const DATA_DIR = path.join(
+  process.env.BOT_DATA_DIR || path.join(__dirname, 'auth'),
+  LOCATION_SLUG || 'default'
+);
+const AUTH_DIR = path.join(DATA_DIR, 'wa-session');
+const SUDO_CONFIG_FILE = path.join(DATA_DIR, 'sudo-phones.json');
+const LEGACY_AUTH_DIR = path.join(__dirname, 'auth', LOCATION_SLUG || 'default');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 let sock = null;
@@ -76,7 +81,7 @@ function phoneFromJid(jid) {
 let sudoConfig = { sudoPhones: [] };
 
 function saveSudoConfig() {
-  if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(SUDO_CONFIG_FILE, JSON.stringify(sudoConfig, null, 2));
 }
 
@@ -94,6 +99,25 @@ function loadSudoConfig() {
 }
 
 loadSudoConfig();
+
+function migrateLegacyData() {
+  const legacyCreds = path.join(LEGACY_AUTH_DIR, 'creds.json');
+  const newCreds = path.join(AUTH_DIR, 'creds.json');
+  if (fs.existsSync(legacyCreds) && !fs.existsSync(newCreds)) {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.cpSync(LEGACY_AUTH_DIR, AUTH_DIR, { recursive: true });
+    logger.info({ DATA_DIR }, 'session WhatsApp migrée');
+  }
+  const legacySudo = path.join(LEGACY_AUTH_DIR, 'sudo-phones.json');
+  if (fs.existsSync(legacySudo) && !fs.existsSync(SUDO_CONFIG_FILE)) {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.copyFileSync(legacySudo, SUDO_CONFIG_FILE);
+    loadSudoConfig();
+    logger.info({ DATA_DIR }, 'sudo-phones migré');
+  }
+}
+
+migrateLegacyData();
 
 function getAllAllowedPhones() {
   const admin = BOT_ADMIN_PHONE;
@@ -713,10 +737,14 @@ app.post('/api/start', (req, res) => {
   cancelReconnect();
   reconnectAttempts = 0;
   linkRequested = true;
-  res.json({ success: true, message: 'Started connection process' });
+  const hasSession = hasRegisteredSession();
+  res.json({
+    success: true,
+    message: hasSession ? 'Reconnexion en cours' : 'Started connection process',
+  });
   connectToWhatsApp({
     force: true,
-    clearAuth: true,
+    clearAuth: !hasSession,
   }).catch((err) => {
     isLinking = false;
     linkRequested = false;
@@ -752,10 +780,12 @@ app.post('/api/logout', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  logger.info({ PORT, LOCATION_SLUG }, 'compta-boxing-bot démarré');
+  logger.info({ PORT, LOCATION_SLUG, dataDir: DATA_DIR }, 'compta-boxing-bot démarré');
   setTimeout(() => {
     if (hasRegisteredSession()) {
-      connectToWhatsApp({ silent: true }).catch((err) => logger.error({ err }, 'reconnexion session échouée'));
+      connectToWhatsApp({ silent: true, force: true, clearAuth: false }).catch(
+        (err) => logger.error({ err }, 'reconnexion session échouée')
+      );
     }
   }, 3000);
 });
