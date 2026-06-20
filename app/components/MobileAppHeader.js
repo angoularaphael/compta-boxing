@@ -1,0 +1,27 @@
+'use client';
+
+import Image from 'next/image';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import MobileNavIcon from './MobileNavIcon';
+import LogoutButton from './LogoutButton';
+
+export default function MobileAppHeader() {
+  const pathname = usePathname();
+
+  return (
+    <header className="mobile-app-header">
+      <div className="mobile-app-brand">
+        <Image src="/logo.svg" alt="Boxing Center" width={110} height={31} className="mobile-brand-logo" priority />
+        <span className="mobile-brand-tag mobile-brand-tag-neutral">COMPTA</span>
+      </div>
+
+      <div className="mobile-app-actions">
+        <Link href="/admin" className="mobile-icon-btn" aria-label="Tableau de bord">
+          <MobileNavIcon name="dashboard" active={pathname === '/admin'} />
+        </Link>
+        <LogoutButton variant="icon" />
+      </div>
+    </header>
+  );
+}
