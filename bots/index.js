@@ -40,6 +40,9 @@ let isLinking = false;
 let qrError = null;
 let linkRequested = false;
 let reconnectTimer = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 6;
+const socketLogger = pino({ level: 'silent' });
 
 const app = express();
 app.use(cors());
@@ -199,6 +202,32 @@ function cancelReconnect() {
   }
 }
 
+function isQrExpiredError(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return msg.includes('qr') && (msg.includes('expir') || msg.includes('timeout'));
+}
+
+function scheduleReconnect(delayMs, { clearAuth = false } = {}) {
+  cancelReconnect();
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    isLinking = false;
+    if (linkRequested) {
+      qrError = 'Trop de tentatives. Cliquez sur Fermer puis Générer le QR.';
+    }
+    return;
+  }
+  reconnectAttempts += 1;
+  isLinking = true;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectToWhatsApp({
+      force: true,
+      clearAuth,
+      silent: !linkRequested,
+    }).catch((err) => logger.error({ err }, 'reconnexion échouée'));
+  }, delayMs);
+}
+
 function clearAuthSession() {
   if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
 }
@@ -227,6 +256,8 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
   if (force) qrError = null;
 
   cancelReconnect();
+  if (force && clearAuth) reconnectAttempts = 0;
+
   await destroySocket();
   if (clearAuth) {
     clearAuthSession();
@@ -237,13 +268,20 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+    let version = [2, 3000, 1017578768];
+    try {
+      const latest = await fetchLatestBaileysVersion();
+      version = latest.version;
+    } catch {
+      logger.warn('Version WA par défaut');
+    }
 
     sock = makeWASocket({
       version,
       auth: state,
-      logger,
+      logger: socketLogger,
       printQRInTerminal: false,
+      browser: ['Compta Boxing', 'Chrome', '120.0.0.0'],
       qrTimeout: 60000,
       connectTimeoutMs: 60000,
     });
@@ -260,6 +298,7 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
         }
         currentQrBase64 = await qrcode.toDataURL(qr);
         qrError = null;
+        reconnectAttempts = 0;
         logger.info('QR code généré — GET /api/status');
       }
       if (connection === 'open') {
@@ -268,29 +307,35 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
         linkRequested = false;
         currentQrBase64 = null;
         qrError = null;
+        reconnectAttempts = 0;
+        cancelReconnect();
         logger.info({ LOCATION_SLUG }, 'WhatsApp connecté');
       }
       if (connection === 'close') {
         isConnected = false;
-        const code = lastDisconnect?.error?.output?.statusCode;
-        logger.warn({ code }, 'connexion fermée');
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const loggedOut = statusCode === DisconnectReason.loggedOut;
+        logger.warn({ code: statusCode }, 'connexion fermée');
         await destroySocket();
-        if (code === DisconnectReason.loggedOut) {
+        if (loggedOut) {
           isLinking = false;
           linkRequested = false;
           currentQrBase64 = null;
           clearAuthSession();
           return;
         }
-        if (!linkRequested && hasRegisteredSession()) {
-          reconnectTimer = setTimeout(() => {
-            reconnectTimer = null;
-            connectToWhatsApp({ silent: true }).catch((err) => logger.error({ err }, 'reconnexion échouée'));
-          }, 3000);
+        if (linkRequested && isQrExpiredError(lastDisconnect?.error)) {
+          currentQrBase64 = null;
+          scheduleReconnect(3000, { clearAuth: true });
+          return;
+        }
+        if (linkRequested || hasRegisteredSession()) {
+          const delay = statusCode === DisconnectReason.restartRequired ? 1500 : 5000;
+          scheduleReconnect(delay, { clearAuth: false });
           return;
         }
         isLinking = false;
-        if (!linkRequested) currentQrBase64 = null;
+        currentQrBase64 = null;
       }
     });
   } catch (err) {
@@ -305,6 +350,7 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
 
 async function stopLinking() {
   cancelReconnect();
+  reconnectAttempts = 0;
   linkRequested = false;
   isLinking = false;
   currentQrBase64 = null;
@@ -325,7 +371,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     connected: isConnected,
-    connecting: linkRequested && isLinking && !isConnected,
+    connecting: (linkRequested || isLinking) && !isConnected,
     linkRequested,
     qr: linkRequested ? currentQrBase64 : null,
     qrError: linkRequested ? qrError : null,
@@ -345,6 +391,8 @@ app.get('/api/qr', (req, res) => {
 
 app.post('/api/start', (req, res) => {
   if (isConnected) return res.json({ success: true, message: 'Already connected' });
+  cancelReconnect();
+  reconnectAttempts = 0;
   linkRequested = true;
   res.json({ success: true, message: 'Started connection process' });
   connectToWhatsApp({
@@ -365,6 +413,7 @@ app.post('/api/stop', async (req, res) => {
 
 app.post('/api/logout', async (req, res) => {
   cancelReconnect();
+  reconnectAttempts = 0;
   linkRequested = false;
   isLinking = false;
   const activeSock = sock;

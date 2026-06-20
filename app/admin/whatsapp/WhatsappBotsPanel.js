@@ -21,7 +21,11 @@ function BotCard({ bot }) {
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
       setStatus({ loading: false, ...data });
-      if (data.connected) setQrMode(false);
+      if (data.connected) {
+        setQrMode(false);
+      } else if (data.connecting) {
+        setQrMode(true);
+      }
     } catch (err) {
       setStatus({ loading: false, error: err.message, connected: false, qr: null });
     }
@@ -33,10 +37,10 @@ function BotCard({ bot }) {
 
   useEffect(() => {
     if (status.connected) return undefined;
-    if (!qrMode) return undefined;
+    if (!qrMode && !status.connecting) return undefined;
     const id = setInterval(() => setTick((t) => t + 1), 4000);
     return () => clearInterval(id);
-  }, [status.connected, qrMode]);
+  }, [status.connected, qrMode, status.connecting]);
 
   async function start() {
     if (starting) return;
@@ -118,6 +122,7 @@ function BotCard({ bot }) {
 
   const showQr = qrMode && !status.connected && status.qr;
   const showWaiting = qrMode && !status.connected && !status.qr;
+  const showConnecting = qrMode && !status.connected && status.connecting && !status.qr;
 
   return (
     <div className="card compta-bot-card">
@@ -149,10 +154,13 @@ function BotCard({ bot }) {
 
       {!status.loading && !status.connected && !showQr ? (
         <div className="compta-bot-help">
+          {status.qrError ? <p className="error">{status.qrError}</p> : null}
           <p>
-            {showWaiting
-              ? (status.error || 'Génération du QR en cours…')
-              : (status.error || 'Cliquez sur « Générer le QR » pour afficher le code.')}
+            {showConnecting
+              ? 'QR scanné — finalisation de la connexion…'
+              : showWaiting
+                ? (status.error || 'Génération du QR en cours…')
+                : (status.error || 'Cliquez sur « Générer le QR » pour afficher le code.')}
           </p>
           {!qrMode && status.configured === false ? (
             <ol className="compta-steps">
