@@ -20,17 +20,33 @@ const {
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0') && digits.length === 10) return `33${digits.slice(1)}`;
+  if (digits.startsWith('33') && digits.length >= 11) return digits;
+  return digits;
+}
+
+function isValidPhoneDigits(digits) {
+  return digits.length >= 9 && digits.length <= 15;
+}
+
 const PORT = Number(process.env.PORT || 3011);
 const LOCATION_SLUG = String(process.env.LOCATION_SLUG || '').trim();
 const LOCATION_NAME = process.env.LOCATION_NAME || LOCATION_SLUG;
 const WEBHOOK_URL = String(process.env.COMPTA_WEBHOOK_URL || '').replace(/\/$/, '');
 const WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET || '';
-const ALLOWED_PHONES = String(process.env.ALLOWED_PHONES || '')
+const BOT_ADMIN_PHONE = normalizePhone(
+  process.env.BOT_ADMIN_PHONE || process.env.MANDATORY_ADMIN_PHONE || '33762641473'
+);
+const ENV_ALLOWED_PHONES = String(process.env.ALLOWED_PHONES || '')
   .split(/[,;\s]+/)
-  .map((p) => p.replace(/\D/g, ''))
-  .filter(Boolean);
+  .map(normalizePhone)
+  .filter(isValidPhoneDigits);
 
 const AUTH_DIR = path.join(__dirname, 'auth', LOCATION_SLUG || 'default');
+const SUDO_CONFIG_FILE = path.join(AUTH_DIR, 'sudo-phones.json');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 let sock = null;
@@ -54,13 +70,179 @@ function ensureConfig() {
 }
 
 function phoneFromJid(jid) {
-  return String(jid || '').split('@')[0].replace(/\D/g, '');
+  return normalizePhone(String(jid || '').split('@')[0]);
+}
+
+let sudoConfig = { sudoPhones: [] };
+
+function saveSudoConfig() {
+  if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+  fs.writeFileSync(SUDO_CONFIG_FILE, JSON.stringify(sudoConfig, null, 2));
+}
+
+function loadSudoConfig() {
+  if (!fs.existsSync(SUDO_CONFIG_FILE)) return;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SUDO_CONFIG_FILE, 'utf8'));
+    sudoConfig.sudoPhones = Array.isArray(parsed.sudoPhones)
+      ? parsed.sudoPhones.map(normalizePhone).filter(isValidPhoneDigits)
+      : [];
+    saveSudoConfig();
+  } catch (err) {
+    logger.warn({ err }, 'lecture sudo-phones.json');
+  }
+}
+
+loadSudoConfig();
+
+function getAllAllowedPhones() {
+  const admin = BOT_ADMIN_PHONE;
+  const extra = (sudoConfig.sudoPhones || [])
+    .map(normalizePhone)
+    .filter((p) => p && p !== admin);
+  return [...new Set([admin, ...ENV_ALLOWED_PHONES, ...extra].filter(isValidPhoneDigits))];
+}
+
+function phoneMatches(phone, allowed) {
+  const p = normalizePhone(phone);
+  const a = normalizePhone(allowed);
+  if (!p || !a) return false;
+  return p === a || p.endsWith(a) || a.endsWith(p);
+}
+
+function isAllowedPhone(phone) {
+  const list = getAllAllowedPhones();
+  if (!list.length) return true;
+  return list.some((p) => phoneMatches(phone, p));
 }
 
 function isAllowed(msg) {
-  if (!ALLOWED_PHONES.length) return true;
-  const phone = phoneFromJid(msg.key?.remoteJid);
-  return ALLOWED_PHONES.some((p) => phone.endsWith(p) || p.endsWith(phone));
+  return isAllowedPhone(phoneFromJid(msg.key?.remoteJid));
+}
+
+function isSudoAdmin(phone) {
+  return phoneMatches(phone, BOT_ADMIN_PHONE);
+}
+
+function addSudoPhone(phone) {
+  const p = normalizePhone(phone);
+  if (!isValidPhoneDigits(p)) {
+    return { ok: false, message: '❌ Numéro invalide.' };
+  }
+  if (phoneMatches(p, BOT_ADMIN_PHONE)) {
+    return { ok: true, message: 'ℹ️ Ce numéro est déjà admin principal.' };
+  }
+  if (!sudoConfig.sudoPhones.some((x) => phoneMatches(x, p))) {
+    sudoConfig.sudoPhones.push(p);
+    saveSudoConfig();
+  }
+  return { ok: true, message: `✅ ${p} autorisé pour ${LOCATION_NAME}.` };
+}
+
+function removeSudoPhone(phone) {
+  const p = normalizePhone(phone);
+  if (phoneMatches(p, BOT_ADMIN_PHONE)) {
+    return { ok: false, message: '⛔ Admin principal, non supprimable.' };
+  }
+  sudoConfig.sudoPhones = sudoConfig.sudoPhones.filter((x) => !phoneMatches(x, p));
+  saveSudoConfig();
+  return { ok: true, message: `✅ ${p} retiré.` };
+}
+
+function extractText(msg) {
+  if (!msg?.message) return '';
+  const contentType = getContentType(msg.message);
+  if (contentType === 'conversation') return msg.message.conversation || '';
+  if (contentType === 'extendedTextMessage') return msg.message.extendedTextMessage?.text || '';
+  if (contentType === 'imageMessage') return msg.message.imageMessage?.caption || '';
+  if (contentType === 'documentMessage') return msg.message.documentMessage?.caption || '';
+  return '';
+}
+
+function getQuotedContext(msg) {
+  const m = msg.message;
+  if (!m) return null;
+  return (
+    m.extendedTextMessage?.contextInfo ||
+    m.imageMessage?.contextInfo ||
+    m.documentMessage?.contextInfo ||
+    m.videoMessage?.contextInfo ||
+    null
+  );
+}
+
+function parseCommandPhone(text, commandBase) {
+  const trimmed = text.trim();
+  const bases = [commandBase];
+  if (commandBase === 'setsudo') bases.push('setsudo');
+  if (commandBase === 'unsudo') bases.push('unsudo');
+  for (const base of bases) {
+    const patterns = [
+      new RegExp(`^\\.${base}\\s*\\((\\d{9,15})\\)`, 'i'),
+      new RegExp(`^\\.${base}\\s+(\\d{9,15})`, 'i'),
+    ];
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern);
+      if (match) return normalizePhone(match[1]);
+    }
+  }
+  return null;
+}
+
+function parseUploadOptions(text) {
+  const lower = text.trim().toLowerCase();
+  let docType = 'invoice';
+  let accountingMonth = null;
+  if (lower.includes('releve') || lower.includes('relevé')) {
+    docType = 'statement';
+    const m = lower.match(/(\d{4}-\d{2})/);
+    accountingMonth = m ? m[1] : null;
+  }
+  return { docType, accountingMonth };
+}
+
+async function reactToCommand(msg) {
+  if (!sock || !msg?.key?.remoteJid) return;
+  try {
+    await sock.sendMessage(msg.key.remoteJid, { react: { text: '⏳', key: msg.key } });
+  } catch {
+    /* ignore */
+  }
+}
+
+async function sendUnauthorized(msg) {
+  await sock.sendMessage(msg.key.remoteJid, {
+    text: [
+      `⛔ Numéro non autorisé — ${LOCATION_NAME}`,
+      '',
+      'Demandez à l\'admin d\'exécuter :',
+      '`.setsudo VOTRE_NUMERO`',
+      '(ex. `.setsudo 33612345678`)',
+    ].join('\n'),
+  });
+}
+
+async function sendMenu(jid) {
+  await sock.sendMessage(jid, {
+    text: [
+      `📋 *Compta — ${LOCATION_NAME}*`,
+      '',
+      '*Factures*',
+      '• Envoyez une photo ou PDF directement',
+      '• Ou répondez à un fichier avec `.upload`',
+      '',
+      '*Relevé bancaire*',
+      '• PDF + légende `releve 2026-06`',
+      '• Ou réponse : `.upload releve 2026-06`',
+      '',
+      '*Admin*',
+      '• `.setsudo NUMERO` — autoriser un numéro',
+      '• `.unsudo NUMERO` — retirer un numéro',
+      '• `.sudo` — liste des numéros autorisés',
+      '',
+      `Site : ${WEBHOOK_URL}`,
+    ].join('\n'),
+  });
 }
 
 function mediaMeta(msg) {
@@ -105,29 +287,36 @@ async function postToCompta(buffer, meta, fromPhone, docType, accountingMonth) {
   return res.data;
 }
 
-async function handleMediaMessage(msg) {
+async function handleMediaMessage(msg, options = {}) {
+  const fromPhone = phoneFromJid(msg.key.remoteJid);
+
   if (!isAllowed(msg)) {
-    await sock.sendMessage(msg.key.remoteJid, {
-      text: '⛔ Numéro non autorisé pour la compta.',
-    });
+    await sendUnauthorized(msg);
     return;
   }
 
   const meta = mediaMeta(msg);
-  if (!meta) return;
+  if (!meta) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: '❌ Format non supporté. Envoyez une image (JPG/PNG) ou un PDF.',
+    });
+    return;
+  }
 
-  const caption = (
-    msg.message.imageMessage?.caption ||
-    msg.message.documentMessage?.caption ||
-    ''
-  ).trim().toLowerCase();
+  let docType = options.docType || 'invoice';
+  let accountingMonth = options.accountingMonth || null;
 
-  let docType = 'invoice';
-  let accountingMonth = null;
-  if (caption.startsWith('releve') || caption.startsWith('relevé')) {
-    docType = 'statement';
-    const m = caption.match(/(\d{4}-\d{2})/);
-    accountingMonth = m ? m[1] : null;
+  if (!options.docType) {
+    const caption = (
+      msg.message.imageMessage?.caption ||
+      msg.message.documentMessage?.caption ||
+      ''
+    ).trim().toLowerCase();
+    if (caption.startsWith('releve') || caption.startsWith('relevé')) {
+      docType = 'statement';
+      const m = caption.match(/(\d{4}-\d{2})/);
+      accountingMonth = m ? m[1] : null;
+    }
   }
 
   await sock.sendMessage(msg.key.remoteJid, {
@@ -142,7 +331,6 @@ async function handleMediaMessage(msg) {
       { logger, reuploadRequest: sock.updateMediaMessage }
     );
 
-    const fromPhone = phoneFromJid(msg.key.remoteJid);
     const result = await postToCompta(buffer, meta, fromPhone, docType, accountingMonth);
 
     if (docType === 'statement') {
@@ -164,10 +352,126 @@ async function handleMediaMessage(msg) {
       });
     }
   } catch (err) {
-    logger.error({ err }, 'upload failed');
+    logger.error({ err, fromPhone, docType }, 'upload failed');
+    const detail = err.response?.data?.error || err.message;
     await sock.sendMessage(msg.key.remoteJid, {
-      text: `❌ Erreur : ${err.response?.data?.error || err.message}`,
+      text: `❌ Erreur envoi vers le site : ${detail}`,
     });
+  }
+}
+
+function buildQuotedMediaMessage(msg) {
+  const ctx = getQuotedContext(msg);
+  if (!ctx?.quotedMessage) return null;
+  const quotedType = getContentType(ctx.quotedMessage);
+  if (quotedType !== 'imageMessage' && quotedType !== 'documentMessage') return null;
+  return {
+    key: {
+      remoteJid: msg.key.remoteJid,
+      fromMe: ctx.participant ? String(ctx.participant).includes('@s.whatsapp.net') : false,
+      id: ctx.stanzaId,
+      participant: ctx.participant || undefined,
+    },
+    message: ctx.quotedMessage,
+  };
+}
+
+async function handleUploadCommand(msg, text) {
+  const quotedMsg = buildQuotedMediaMessage(msg);
+  if (!quotedMsg) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: [
+        '❌ Répondez à une photo, PDF ou document avec `.upload`',
+        '',
+        'Exemple : maintenez le fichier → Répondre → tapez `.upload`',
+        'Relevé : `.upload releve 2026-06`',
+      ].join('\n'),
+    });
+    return;
+  }
+  const { docType, accountingMonth } = parseUploadOptions(text);
+  await handleMediaMessage(quotedMsg, { docType, accountingMonth });
+}
+
+async function handleCommand(msg, text) {
+  const sender = msg.key.remoteJid;
+  const senderPhone = phoneFromJid(sender);
+  const cleanText = text.trim().toLowerCase();
+  const cmd = cleanText.split(/\s+/)[0].split('(')[0];
+
+  const known = [
+    '.menu', '.aide', '.help', '.guide',
+    '.ping', '.upload', '.setsudo', '.unsudo', '.sudo',
+  ];
+  if (!known.some((k) => cmd === k || cleanText.startsWith(`${k} `))) return;
+
+  if (!isAllowed(msg) && !['.menu', '.aide', '.help', '.guide', '.ping'].includes(cmd)) {
+    await sendUnauthorized(msg);
+    return;
+  }
+
+  await reactToCommand(msg);
+
+  if (cmd === '.menu' || cmd === '.aide' || cmd === '.help' || cmd === '.guide') {
+    await sendMenu(sender);
+    return;
+  }
+
+  if (cmd === '.ping') {
+    await sock.sendMessage(sender, {
+      text: `🏓 Pong — Compta ${LOCATION_NAME}\n${WEBHOOK_URL}`,
+    });
+    return;
+  }
+
+  if (cmd === '.upload') {
+    await handleUploadCommand(msg, text);
+    return;
+  }
+
+  if (cmd === '.sudo') {
+    const phones = getAllAllowedPhones();
+    await sock.sendMessage(sender, {
+      text: [
+        `👥 Numéros autorisés — ${LOCATION_NAME}`,
+        `Admin : ${BOT_ADMIN_PHONE || '—'}`,
+        ...phones.map((p) => `• ${p}`),
+      ].join('\n'),
+    });
+    return;
+  }
+
+  if (cmd === '.setsudo') {
+    if (!isSudoAdmin(senderPhone)) {
+      await sock.sendMessage(sender, {
+        text: '⛔ Seul l\'admin principal peut utiliser `.setsudo`.',
+      });
+      return;
+    }
+    const phone = parseCommandPhone(text, 'setsudo');
+    if (!phone) {
+      await sock.sendMessage(sender, { text: '❌ Format : `.setsudo NUMERO` (ex. `.setsudo 33612345678`)' });
+      return;
+    }
+    const result = addSudoPhone(phone);
+    await sock.sendMessage(sender, { text: result.message });
+    return;
+  }
+
+  if (cmd === '.unsudo') {
+    if (!isSudoAdmin(senderPhone)) {
+      await sock.sendMessage(sender, {
+        text: '⛔ Seul l\'admin principal peut utiliser `.unsudo`.',
+      });
+      return;
+    }
+    const phone = parseCommandPhone(text, 'unsudo');
+    if (!phone) {
+      await sock.sendMessage(sender, { text: '❌ Format : `.unsudo NUMERO`' });
+      return;
+    }
+    const result = removeSudoPhone(phone);
+    await sock.sendMessage(sender, { text: result.message });
   }
 }
 
@@ -176,10 +480,24 @@ async function handleIncomingMessages(m) {
   for (const msg of m.messages || []) {
     try {
       if (!msg.message || msg.key.fromMe) continue;
+
+      const text = extractText(msg);
+      if (text.trim().startsWith('.')) {
+        await handleCommand(msg, text);
+        continue;
+      }
+
       const meta = mediaMeta(msg);
       if (meta) await handleMediaMessage(msg);
     } catch (err) {
       logger.error({ err }, 'message error');
+      try {
+        await sock.sendMessage(msg.key.remoteJid, {
+          text: `❌ Erreur bot : ${err.message}`,
+        });
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -365,6 +683,7 @@ app.get('/api/health', (req, res) => {
     connecting: linkRequested && isLinking && !isConnected,
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
+    allowedPhones: getAllAllowedPhones().length,
   });
 });
 
