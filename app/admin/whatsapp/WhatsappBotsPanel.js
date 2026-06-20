@@ -51,19 +51,26 @@ function BotCard({ bot }) {
         const data = await parseApiJson(res);
         if (!res.ok) {
           setQrMode(false);
-          setStatus((s) => ({ ...s, error: data.error || 'Échec du démarrage', qr: null, connecting: false }));
+          setStatus((s) => ({
+            ...s,
+            loading: false,
+            error: data.error || 'Échec du démarrage',
+            qr: null,
+            connecting: false,
+          }));
         } else {
-          setStatus((s) => ({ ...s, connecting: true, error: null, qr: null }));
+          setStatus((s) => ({ ...s, loading: false, connecting: true, error: null, qr: null }));
         }
       } catch (err) {
         setQrMode(false);
         setStatus((s) => ({
           ...s,
+          loading: false,
           qr: null,
           connecting: false,
           error: String(err.message || err).includes('abort')
             ? 'Délai dépassé — le bot démarre peut-être en arrière-plan, attendez le QR.'
-            : 'Bot inaccessible.',
+            : (err.message || 'Bot inaccessible.'),
         }));
       } finally {
         setTick((t) => t + 1);
