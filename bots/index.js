@@ -36,6 +36,8 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 let sock = null;
 let currentQrBase64 = null;
 let isConnected = false;
+let isLinking = false;
+let qrError = null;
 
 const app = express();
 app.use(cors());
@@ -177,48 +179,120 @@ async function handleIncomingMessages(m) {
   }
 }
 
-async function startSocket() {
+function hasRegisteredSession() {
+  return fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
+}
+
+function clearAuthSession() {
+  if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+}
+
+async function destroySocket() {
+  const old = sock;
+  sock = null;
+  if (!old) return;
+  try {
+    old.ev.removeAllListeners('connection.update');
+    old.ev.removeAllListeners('creds.update');
+    old.ev.removeAllListeners('messages.upsert');
+    await old.end(undefined);
+  } catch (err) {
+    logger.warn({ err }, 'fermeture socket');
+  }
+}
+
+async function connectToWhatsApp({ force = false, clearAuth = false } = {}) {
   ensureConfig();
+  if (isConnected && sock && !force) return;
+  if (isLinking && !force) return;
+
+  isLinking = true;
+  if (force) qrError = null;
+
+  await destroySocket();
+  if (clearAuth) {
+    clearAuthSession();
+    currentQrBase64 = null;
+  }
+
   if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version } = await fetchLatestBaileysVersion();
 
-  sock = makeWASocket({
-    version,
-    auth: state,
-    logger,
-    printQRInTerminal: false,
-  });
+    sock = makeWASocket({
+      version,
+      auth: state,
+      logger,
+      printQRInTerminal: false,
+      qrTimeout: 60000,
+      connectTimeoutMs: 60000,
+    });
 
-  sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('messages.upsert', handleIncomingMessages);
+    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('messages.upsert', handleIncomingMessages);
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      currentQrBase64 = await qrcode.toDataURL(qr);
-      logger.info('QR code généré — GET /api/qr');
-    }
-    if (connection === 'open') {
-      isConnected = true;
-      currentQrBase64 = null;
-      logger.info({ LOCATION_SLUG }, 'WhatsApp connecté');
-    }
-    if (connection === 'close') {
-      isConnected = false;
-      const code = lastDisconnect?.error?.output?.statusCode;
-      const restart = code !== DisconnectReason.loggedOut;
-      logger.warn({ code }, 'connexion fermée');
-      if (restart) setTimeout(startSocket, 3000);
-    }
-  });
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+      if (qr) {
+        currentQrBase64 = await qrcode.toDataURL(qr);
+        qrError = null;
+        logger.info('QR code généré — GET /api/status ou /api/qr');
+      }
+      if (connection === 'open') {
+        isConnected = true;
+        isLinking = false;
+        currentQrBase64 = null;
+        qrError = null;
+        logger.info({ LOCATION_SLUG }, 'WhatsApp connecté');
+      }
+      if (connection === 'close') {
+        isConnected = false;
+        const code = lastDisconnect?.error?.output?.statusCode;
+        logger.warn({ code }, 'connexion fermée');
+        await destroySocket();
+        if (code === DisconnectReason.loggedOut) {
+          isLinking = false;
+          currentQrBase64 = null;
+          clearAuthSession();
+          return;
+        }
+        if (hasRegisteredSession()) {
+          setTimeout(() => {
+            connectToWhatsApp().catch((err) => logger.error({ err }, 'reconnexion échouée'));
+          }, 3000);
+        } else {
+          isLinking = false;
+          currentQrBase64 = null;
+        }
+      }
+    });
+  } catch (err) {
+    isLinking = false;
+    qrError = err.message || 'Erreur de connexion.';
+    logger.error({ err }, 'connexion WhatsApp échouée');
+    await destroySocket();
+    throw err;
+  }
 }
 
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     connected: isConnected,
+    connecting: isLinking && !isConnected,
+    location: LOCATION_SLUG,
+    name: LOCATION_NAME,
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    connected: isConnected,
+    connecting: isLinking && !isConnected,
+    qr: currentQrBase64,
+    qrError,
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
   });
@@ -226,11 +300,45 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/qr', (req, res) => {
   if (isConnected) return res.json({ connected: true });
-  if (!currentQrBase64) return res.status(404).json({ error: 'QR non disponible' });
+  if (!currentQrBase64) return res.status(404).json({ error: 'QR non disponible — cliquez sur Générer le QR' });
   res.json({ qr: currentQrBase64 });
+});
+
+app.post('/api/start', (req, res) => {
+  if (isConnected) return res.json({ success: true, message: 'Already connected' });
+  res.json({ success: true, message: 'Started connection process' });
+  connectToWhatsApp({
+    force: true,
+    clearAuth: true,
+  }).catch((err) => {
+    isLinking = false;
+    qrError = err.message || 'Erreur de connexion.';
+    logger.error({ err }, '/api/start failed');
+  });
+});
+
+app.post('/api/logout', async (req, res) => {
+  isLinking = false;
+  if (sock) {
+    try {
+      await sock.logout();
+    } catch (err) {
+      logger.warn({ err }, 'logout');
+    }
+  }
+  await destroySocket();
+  isConnected = false;
+  currentQrBase64 = null;
+  qrError = null;
+  clearAuthSession();
+  res.json({ success: true, message: 'Logged out' });
 });
 
 app.listen(PORT, () => {
   logger.info({ PORT, LOCATION_SLUG }, 'compta-boxing-bot démarré');
-  startSocket().catch((err) => logger.error({ err }, 'socket start failed'));
+  setTimeout(() => {
+    if (hasRegisteredSession()) {
+      connectToWhatsApp().catch((err) => logger.error({ err }, 'reconnexion session échouée'));
+    }
+  }, 3000);
 });
