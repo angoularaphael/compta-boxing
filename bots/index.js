@@ -401,6 +401,25 @@ function mediaMeta(msg) {
   return null;
 }
 
+function formatUploadError(err) {
+  const data = err?.response?.data;
+  if (data) {
+    if (typeof data === 'string') return data.slice(0, 400);
+    if (typeof data.error === 'string') return data.error;
+    if (data.error && typeof data.error === 'object') {
+      return data.error.message || data.error.error || JSON.stringify(data.error);
+    }
+    if (typeof data.message === 'string') return data.message;
+  }
+  if (err?.message) return String(err.message);
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err).slice(0, 400);
+  } catch {
+    return 'Erreur inconnue';
+  }
+}
+
 async function postToCompta(buffer, meta, fromPhone, docType, accountingMonth) {
   const FormData = require('form-data');
   const form = new FormData();
@@ -411,16 +430,28 @@ async function postToCompta(buffer, meta, fromPhone, docType, accountingMonth) {
   form.append('file', buffer, { filename: meta.fileName, contentType: meta.mimetype });
 
   const url = `${WEBHOOK_URL}/api/webhook/whatsapp`;
-  const res = await axios.post(url, form, {
-    headers: {
-      ...form.getHeaders(),
-      'x-webhook-secret': WEBHOOK_SECRET,
-    },
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-    timeout: 120000,
-  });
-  return res.data;
+  try {
+    const res = await axios.post(url, form, {
+      headers: {
+        ...form.getHeaders(),
+        'x-webhook-secret': WEBHOOK_SECRET,
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      timeout: 120000,
+      validateStatus: () => true,
+    });
+    if (res.status >= 400) {
+      const msg = formatUploadError({ response: { data: res.data }, message: res.statusText });
+      const err = new Error(msg);
+      err.response = res;
+      throw err;
+    }
+    return res.data;
+  } catch (err) {
+    if (err.response) throw err;
+    throw new Error(formatUploadError(err));
+  }
 }
 
 async function handleMediaMessage(msg, options = {}) {
@@ -489,7 +520,7 @@ async function handleMediaMessage(msg, options = {}) {
     }
   } catch (err) {
     logger.error({ err, fromPhone, docType }, 'upload failed');
-    const detail = err.response?.data?.error || err.message;
+    const detail = formatUploadError(err);
     await sock.sendMessage(msg.key.remoteJid, {
       text: `❌ Erreur envoi vers le site : ${detail}`,
     });

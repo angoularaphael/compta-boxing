@@ -9,6 +9,7 @@ import {
   uploadFile,
 } from '../../../../lib/storage';
 import { parseAccountingMonth } from '../../../../lib/locations';
+import { describeError } from '../../../../lib/apiJson';
 
 async function verifyLocationSecret(request, location) {
   const header = request.headers.get('x-webhook-secret') || '';
@@ -115,6 +116,6 @@ export async function POST(request) {
     });
   } catch (err) {
     console.error('[webhook/whatsapp]', err);
-    return NextResponse.json({ error: err.message || 'Erreur serveur' }, { status: 500 });
+    return NextResponse.json({ error: describeError(err) || 'Erreur serveur' }, { status: 500 });
   }
 }
