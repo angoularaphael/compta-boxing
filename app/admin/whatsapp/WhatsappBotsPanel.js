@@ -5,13 +5,11 @@ import { BOTS } from '../../../lib/bot-config';
 import { parseApiJson } from '../../../lib/apiJson';
 import ActionButton from '../../components/ActionButton';
 import { useSingleAction } from '../../../lib/useSingleAction';
-import { fetchBotStatusDirect, postBotActionDirect } from './bot-client';
 
 function BotCard({ bot }) {
   const [status, setStatus] = useState({ loading: true });
   const [tick, setTick] = useState(0);
   const [qrMode, setQrMode] = useState(false);
-  const [botUrl, setBotUrl] = useState(null);
   const { run: runStart, pending: starting } = useSingleAction();
   const { run: runStop, pending: stopping } = useSingleAction();
   const { run: runLogout, pending: loggingOut } = useSingleAction();
@@ -19,40 +17,27 @@ function BotCard({ bot }) {
   const load = useCallback(async () => {
     setStatus((s) => ({ ...s, loading: true }));
     try {
-      const res = await fetch(`/api/bots/${bot.slug}`, { cache: 'no-store' });
-      const config = await parseApiJson(res);
-      if (!res.ok) throw new Error(config.error);
-
-      const url = config.botUrl || null;
-      setBotUrl(url);
-
-      if (!config.configured || !url) {
-        setStatus({
-          loading: false,
-          configured: false,
-          connected: false,
-          connecting: false,
-          qr: null,
-          error: 'URL du bot non configurée (Supabase bot_url ou BOT_URL_* sur Vercel).',
-        });
-        return;
-      }
-
-      const live = await fetchBotStatusDirect(url);
-      setStatus({
-        loading: false,
-        slug: config.slug,
-        label: config.label,
-        botUrl: url,
-        ...live,
+      const res = await fetch(`/api/bots/${bot.slug}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
       });
-      if (live.connected) {
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error);
+      setStatus({ loading: false, ...data });
+      if (data.connected) {
         setQrMode(false);
-      } else if (live.connecting) {
+      } else if (data.connecting) {
         setQrMode(true);
       }
     } catch (err) {
-      setStatus({ loading: false, error: err.message, connected: false, qr: null });
+      setStatus({
+        loading: false,
+        error: String(err.message || err).includes('abort')
+          ? 'Délai dépassé — réessayez Actualiser.'
+          : (err.message || 'Erreur'),
+        connected: false,
+        qr: null,
+      });
     }
   }, [bot.slug]);
 
@@ -68,18 +53,35 @@ function BotCard({ bot }) {
   }, [status.connected, qrMode, status.connecting]);
 
   async function start() {
-    if (starting || !botUrl) return;
+    if (starting) return;
     await runStart(async () => {
       setQrMode(true);
       try {
-        await postBotActionDirect(botUrl, 'start');
-        setStatus((s) => ({
-          ...s,
-          loading: false,
-          connecting: true,
-          error: null,
-          qr: null,
-        }));
+        const res = await fetch(`/api/bots/${bot.slug}?action=start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'qr' }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await parseApiJson(res);
+        if (!res.ok) {
+          setQrMode(false);
+          setStatus((s) => ({
+            ...s,
+            loading: false,
+            error: data.error || 'Échec du démarrage',
+            qr: null,
+            connecting: false,
+          }));
+        } else {
+          setStatus((s) => ({
+            ...s,
+            loading: false,
+            connecting: true,
+            error: null,
+            qr: null,
+          }));
+        }
       } catch (err) {
         setQrMode(false);
         setStatus((s) => ({
@@ -96,10 +98,13 @@ function BotCard({ bot }) {
   }
 
   async function stop() {
-    if (stopping || !botUrl) return;
+    if (stopping) return;
     await runStop(async () => {
       try {
-        await postBotActionDirect(botUrl, 'stop');
+        await fetch(`/api/bots/${bot.slug}?action=stop`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+        });
       } catch {
         /* ignore */
       }
@@ -116,10 +121,13 @@ function BotCard({ bot }) {
   }
 
   async function logout() {
-    if (loggingOut || !botUrl) return;
+    if (loggingOut) return;
     await runLogout(async () => {
       try {
-        await postBotActionDirect(botUrl, 'logout');
+        await fetch(`/api/bots/${bot.slug}?action=logout`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+        });
       } catch {
         /* ignore */
       }
@@ -182,7 +190,7 @@ function BotCard({ bot }) {
 
       <div className="compta-bot-actions">
         {!status.connected && !qrMode ? (
-          <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting} disabled={!botUrl && !status.loading}>
+          <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting}>
             {starting ? 'Démarrage…' : 'Générer le QR'}
           </ActionButton>
         ) : null}

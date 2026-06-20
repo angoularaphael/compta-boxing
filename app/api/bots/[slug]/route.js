@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '../../../../lib/api-auth';
 import { apiError } from '../../../../lib/apiJson';
 import { getSupabase } from '../../../../lib/supabase';
-import { botUrlFromLocation, fetchBotAction, isValidBotUrl } from '../../../../lib/bots';
+import { botUrlFromLocation, fetchBotAction, fetchBotStatus, isValidBotUrl } from '../../../../lib/bots';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 export async function GET(request, { params }) {
   try {
@@ -15,12 +16,13 @@ export async function GET(request, { params }) {
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
 
     const botUrl = botUrlFromLocation(location);
+    const status = await fetchBotStatus(botUrl);
 
     return NextResponse.json({
       slug,
       label: location.name,
       botUrl: isValidBotUrl(botUrl) ? botUrl : null,
-      configured: isValidBotUrl(botUrl),
+      ...status,
     });
   } catch (err) {
     return apiError(err);
