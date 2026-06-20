@@ -49,22 +49,77 @@ SUPER_ADMIN_PASSWORD=
 WHATSAPP_WEBHOOK_SECRET=
 ```
 
-## Bots WhatsApp (Bothosting)
+## Bots WhatsApp (Bothosting) — configuration
 
-Une **instance Bothosting par salle** (4 numéros permanents) :
+**4 instances séparées** (1 numéro WhatsApp = 1 salle = 1 serveur Bothosting).
 
+### Étape 1 — Vercel en production
+
+Une fois l'app déployée, note l'URL : `https://compta-boxing.vercel.app`
+
+Sur Vercel, variable obligatoire :
+```
+WHATSAPP_WEBHOOK_SECRET=3Giffareno237
+```
+(même valeur sur chaque bot)
+
+### Étape 2 — Créer 4 serveurs Bothosting
+
+| Salle | Port suggéré | Fichier modèle |
+|-------|--------------|----------------|
+| Minimes | 3011 | `bots/env/minimes.env.example` |
+| États-Unis | 3012 | `bots/env/etats_unis.env.example` |
+| Saint-Cyprien | 3013 | `bots/env/st_cyprien.env.example` |
+| Ramonville | 3014 | `bots/env/ramonville.env.example` |
+
+Sur chaque serveur :
 ```bash
-cd compta-boxing/bots
+cd bots
 npm install
-cp env/minimes.env.example .env
+cp env/minimes.env.example .env   # adapter par salle
 npm start
 ```
 
-- Scanner le QR : `GET http://<bothosting-host>:<port>/api/health`
-- Envoyer une **photo ou PDF** → facture classée par mois
-- Légende `releve 2026-01` sur un PDF → import relevé bancaire du mois
+### Étape 3 — Remplir le `.env` de chaque bot
 
-Fichiers d'exemple : [`bots/env/`](bots/env/)
+```env
+LOCATION_SLUG=minimes
+LOCATION_NAME=Minimes
+PORT=3011
+
+COMPTA_WEBHOOK_URL=https://compta-boxing.vercel.app
+WHATSAPP_WEBHOOK_SECRET=3Giffareno237
+
+# Numéro du client autorisé (chiffres uniquement, sans +)
+ALLOWED_PHONES=33612345678
+```
+
+### Étape 4 — Scanner le QR WhatsApp
+
+Ouvrir dans le navigateur :
+```
+http://<ip-bothosting>:3011/api/qr
+```
+Scanner avec le téléphone de la salle concernée. Répéter pour les 4 ports.
+
+Vérifier : `http://<ip>:3011/api/health` → `"connected": true`
+
+### Étape 5 — Usage client
+
+| Action | Comment |
+|--------|---------|
+| Envoyer une facture | Photo ou PDF, sans texte |
+| Envoyer un relevé | PDF avec légende `releve 2026-03` |
+| Choisir la salle | Envoyer sur le **bon numéro** WhatsApp |
+
+Le bot répond automatiquement : facture reçue, date, montant, mois comptable.
+
+### Dépannage
+
+- **Secret invalide** → vérifier `WHATSAPP_WEBHOOK_SECRET` identique Vercel + bot
+- **Numéro non autorisé** → ajouter le numéro dans `ALLOWED_PHONES`
+- **Bucket error** → créer les buckets Supabase Storage
+- **OCR vide** → normal sur photo floue ; corriger dans le back-office
 
 ## Déploiement Vercel
 

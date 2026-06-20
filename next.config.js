@@ -4,6 +4,11 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['pdfkit', 'tesseract.js'],
   },
+  async redirects() {
+    return [
+      { source: '/favicon.ico', destination: '/favicon.svg', permanent: false },
+    ];
+  },
 };
 
 module.exports = nextConfig;

@@ -1,13 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import ActionButton from '../components/ActionButton';
 import { LOCATION_LABELS, LOCATION_SLUGS, currentAccountingMonth } from '../../lib/locations';
 import { parseApiJson } from '../../lib/apiJson';
 
 function ocrBadge(status) {
-  if (status === 'ok') return <span className="badge badge-ok">OCR OK</span>;
-  if (status === 'partial') return <span className="badge badge-warn">OCR partiel</span>;
-  if (status === 'failed') return <span className="badge badge-err">OCR échoué</span>;
+  if (status === 'ok') return <span className="badge badge-compta-ok">OCR OK</span>;
+  if (status === 'partial') return <span className="badge badge-compta-warn">OCR partiel</span>;
+  if (status === 'failed') return <span className="badge badge-compta-err">OCR échoué</span>;
   return <span className="badge">En attente</span>;
 }
 
@@ -132,102 +134,122 @@ export default function ComptaDashboard() {
   const matchedCount = statementInfo.transactions.filter((t) => t.matched_invoice_id).length;
 
   return (
-    <div>
-      <div className="topbar">
-        <h2>Tableau de bord</h2>
-        <button className="btn" type="button" onClick={exportMonth} disabled={loading}>
-          Exporter le mois
-        </button>
+    <div className="compta-panel ik-generator">
+      <div className="ik-generator-hero">
+        <div>
+          <p className="ik-generator-eyebrow">Boxing Center</p>
+          <h1>Compta — {LOCATION_LABELS[location]}</h1>
+          <p className="ik-generator-lead">
+            Factures d&apos;achat, relevé bancaire et export mensuel — mois {month}
+          </p>
+        </div>
+        <div className="ik-generator-stat">
+          <span className="ik-generator-stat-value">{invoices.length}</span>
+          <span className="ik-generator-stat-label">factures</span>
+        </div>
       </div>
 
-      <div className="form-row">
-        <div className="form-field">
-          <label>Salle</label>
-          <select value={location} onChange={(e) => setLocation(e.target.value)}>
-            {LOCATION_SLUGS.map((slug) => (
-              <option key={slug} value={slug}>
-                {LOCATION_LABELS[slug]}
-              </option>
-            ))}
-          </select>
+      <div className="card">
+        <div className="form-row" style={{ marginBottom: 0 }}>
+          <div className="form-field">
+            <label>Salle</label>
+            <select value={location} onChange={(e) => setLocation(e.target.value)} disabled={loading}>
+              {LOCATION_SLUGS.map((slug) => (
+                <option key={slug} value={slug}>
+                  {LOCATION_LABELS[slug]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label>Mois comptable</label>
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={loading} />
+          </div>
+          <ActionButton className="btn btn-secondary" onClick={load} loading={loading}>
+            Actualiser
+          </ActionButton>
+          <ActionButton className="btn btn-secondary" onClick={runAutoMatch} loading={loading}>
+            Auto-rapprocher
+          </ActionButton>
+          <ActionButton className="btn" onClick={exportMonth} loading={loading}>
+            Exporter le mois
+          </ActionButton>
         </div>
-        <div className="form-field">
-          <label>Mois comptable</label>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-        </div>
-        <button className="btn btn-secondary" type="button" onClick={load} disabled={loading}>
-          Actualiser
-        </button>
-        <button className="btn btn-secondary" type="button" onClick={runAutoMatch} disabled={loading}>
-          Auto-rapprocher
-        </button>
       </div>
 
-      {message && <p className="muted">{message}</p>}
+      {message ? <p className="form-hint">{message}</p> : null}
 
-      <div className="stats">
-        <div className="stat">
-          <span className="muted">Factures</span>
+      <div className="compta-stats">
+        <div className="compta-stat">
+          <span>Factures</span>
           <strong>{invoices.length}</strong>
         </div>
-        <div className="stat">
-          <span className="muted">Dépenses relevé</span>
+        <div className="compta-stat">
+          <span>Dépenses relevé</span>
           <strong>{statementInfo.transactions.length}</strong>
         </div>
-        <div className="stat">
-          <span className="muted">Rapprochées</span>
+        <div className="compta-stat">
+          <span>Rapprochées</span>
           <strong>{matchedCount}</strong>
+        </div>
+        <div className="compta-stat">
+          <span>À traiter</span>
+          <strong>
+            <Link href="/admin/match">Rapprochement →</Link>
+          </strong>
         </div>
       </div>
 
-      <div className="grid-2">
+      <div className="compta-upload-grid">
         <div className="card">
-          <h3>Importer une facture</h3>
+          <h3 style={{ marginTop: 0 }}>Importer une facture</h3>
           <p className="muted">Ou envoyez-la sur le WhatsApp de la salle.</p>
-          <input type="file" accept="image/*,application/pdf" onChange={uploadInvoice} disabled={loading} />
+          <input className="compta-file-input" type="file" accept="image/*,application/pdf" onChange={uploadInvoice} disabled={loading} />
         </div>
         <div className="card">
-          <h3>Importer le relevé bancaire</h3>
+          <h3 style={{ marginTop: 0 }}>Importer le relevé bancaire</h3>
           <p className="muted">
             {statementInfo.statement
               ? `Relevé : ${statementInfo.statement.file_name}`
               : 'Aucun relevé pour ce mois.'}
           </p>
-          <input type="file" accept="application/pdf,.csv" onChange={uploadStatement} disabled={loading} />
+          <input className="compta-file-input" type="file" accept="application/pdf,.csv" onChange={uploadStatement} disabled={loading} />
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <h3>Factures du mois</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Fournisseur</th>
-              <th>Montant</th>
-              <th>Fichier</th>
-              <th>OCR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.length === 0 && (
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Factures du mois</h3>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  Aucune facture pour ce mois.
-                </td>
+                <th>Date</th>
+                <th>Fournisseur</th>
+                <th>Montant</th>
+                <th>Fichier</th>
+                <th>OCR</th>
               </tr>
-            )}
-            {invoices.map((inv) => (
-              <tr key={inv.id}>
-                <td>{inv.invoice_date || '—'}</td>
-                <td>{inv.vendor_name || '—'}</td>
-                <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
-                <td>{inv.file_name}</td>
-                <td>{ocrBadge(inv.ocr_status)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    Aucune facture pour ce mois.
+                  </td>
+                </tr>
+              )}
+              {invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td>{inv.invoice_date || '—'}</td>
+                  <td>{inv.vendor_name || '—'}</td>
+                  <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
+                  <td>{inv.file_name}</td>
+                  <td>{ocrBadge(inv.ocr_status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import ActionButton from '../../components/ActionButton';
 import { LOCATION_LABELS, LOCATION_SLUGS, currentAccountingMonth } from '../../../lib/locations';
 import { parseApiJson } from '../../../lib/apiJson';
 
@@ -51,7 +52,7 @@ export default function MatchPanel() {
       });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
-      setMessage('Liaison enregistrée — les deux éléments disparaissent de la liste.');
+      setMessage('Liaison enregistrée.');
       await load();
     } catch (err) {
       setMessage(err.message);
@@ -82,41 +83,53 @@ export default function MatchPanel() {
   }
 
   return (
-    <div>
-      <div className="topbar">
-        <h2>Rapprochement manuel</h2>
+    <div className="compta-panel ik-generator">
+      <div className="ik-generator-hero">
+        <div>
+          <p className="ik-generator-eyebrow">Rapprochement</p>
+          <h1>Factures ↔ Relevé</h1>
+          <p className="ik-generator-lead">
+            Associez manuellement les dépenses sans correspondance automatique — {LOCATION_LABELS[location]}
+          </p>
+        </div>
+        <div className="ik-generator-stat">
+          <span className="ik-generator-stat-value">{unmatchedTx.length + unmatchedInvoices.length}</span>
+          <span className="ik-generator-stat-label">à traiter</span>
+        </div>
       </div>
 
-      <div className="form-row">
-        <div className="form-field">
-          <label>Salle</label>
-          <select value={location} onChange={(e) => setLocation(e.target.value)}>
-            {LOCATION_SLUGS.map((slug) => (
-              <option key={slug} value={slug}>
-                {LOCATION_LABELS[slug]}
-              </option>
-            ))}
-          </select>
+      <div className="card">
+        <div className="form-row" style={{ marginBottom: 0 }}>
+          <div className="form-field">
+            <label>Salle</label>
+            <select value={location} onChange={(e) => setLocation(e.target.value)} disabled={loading}>
+              {LOCATION_SLUGS.map((slug) => (
+                <option key={slug} value={slug}>
+                  {LOCATION_LABELS[slug]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label>Mois</label>
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={loading} />
+          </div>
+          <ActionButton className="btn btn-secondary" onClick={load} loading={loading}>
+            Actualiser
+          </ActionButton>
+          <ActionButton className="btn" onClick={linkManual} loading={loading} disabled={!selectedTx || !selectedInv}>
+            Associer la sélection
+          </ActionButton>
         </div>
-        <div className="form-field">
-          <label>Mois</label>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-        </div>
-        <button className="btn btn-secondary" type="button" onClick={load} disabled={loading}>
-          Actualiser
-        </button>
-        <button className="btn" type="button" onClick={linkManual} disabled={loading || !selectedTx || !selectedInv}>
-          Associer la sélection
-        </button>
       </div>
 
-      {message && <p className="muted">{message}</p>}
+      {message ? <p className="form-hint">{message}</p> : null}
 
-      <div className="grid-2">
+      <div className="match-lists">
         <div className="card">
-          <h3>Dépenses sans facture ({unmatchedTx.length})</h3>
+          <h3 style={{ marginTop: 0 }}>Dépenses sans facture ({unmatchedTx.length})</h3>
           <div className="match-list">
-            {unmatchedTx.length === 0 && <p className="muted">Rien à traiter.</p>}
+            {unmatchedTx.length === 0 && <p className="muted" style={{ padding: '0.75rem' }}>Rien à traiter.</p>}
             {unmatchedTx.map((tx) => (
               <div
                 key={tx.id}
@@ -135,9 +148,9 @@ export default function MatchPanel() {
         </div>
 
         <div className="card">
-          <h3>Factures sans dépense ({unmatchedInvoices.length})</h3>
+          <h3 style={{ marginTop: 0 }}>Factures sans dépense ({unmatchedInvoices.length})</h3>
           <div className="match-list">
-            {unmatchedInvoices.length === 0 && <p className="muted">Rien à traiter.</p>}
+            {unmatchedInvoices.length === 0 && <p className="muted" style={{ padding: '0.75rem' }}>Rien à traiter.</p>}
             {unmatchedInvoices.map((inv) => (
               <div
                 key={inv.id}
@@ -157,21 +170,21 @@ export default function MatchPanel() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <h3>Alias fournisseur (optionnel)</h3>
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Alias fournisseur</h3>
         <p className="muted">Ex. libellé relevé « des sites plus » → fournisseur « Odécom »</p>
-        <div className="form-row">
+        <div className="form-row" style={{ marginBottom: 0 }}>
           <div className="form-field">
             <label>Libellé banque</label>
-            <input value={bankLabel} onChange={(e) => setBankLabel(e.target.value)} />
+            <input value={bankLabel} onChange={(e) => setBankLabel(e.target.value)} disabled={loading} />
           </div>
           <div className="form-field">
             <label>Nom fournisseur facture</label>
-            <input value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
+            <input value={vendorName} onChange={(e) => setVendorName(e.target.value)} disabled={loading} />
           </div>
-          <button className="btn btn-secondary" type="button" onClick={saveAlias} disabled={loading}>
+          <ActionButton className="btn btn-secondary" onClick={saveAlias} loading={loading}>
             Enregistrer alias
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>
