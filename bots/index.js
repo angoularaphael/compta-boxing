@@ -38,6 +38,8 @@ let currentQrBase64 = null;
 let isConnected = false;
 let isLinking = false;
 let qrError = null;
+let linkRequested = false;
+let reconnectTimer = null;
 
 const app = express();
 app.use(cors());
@@ -180,7 +182,21 @@ async function handleIncomingMessages(m) {
 }
 
 function hasRegisteredSession() {
-  return fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
+  const credsPath = path.join(AUTH_DIR, 'creds.json');
+  if (!fs.existsSync(credsPath)) return false;
+  try {
+    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+    return Boolean(creds.registered);
+  } catch {
+    return false;
+  }
+}
+
+function cancelReconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 }
 
 function clearAuthSession() {
@@ -201,14 +217,16 @@ async function destroySocket() {
   }
 }
 
-async function connectToWhatsApp({ force = false, clearAuth = false } = {}) {
+async function connectToWhatsApp({ force = false, clearAuth = false, silent = false } = {}) {
   ensureConfig();
   if (isConnected && sock && !force) return;
   if (isLinking && !force) return;
 
+  if (!silent) linkRequested = true;
   isLinking = true;
   if (force) qrError = null;
 
+  cancelReconnect();
   await destroySocket();
   if (clearAuth) {
     clearAuthSession();
@@ -236,13 +254,18 @@ async function connectToWhatsApp({ force = false, clearAuth = false } = {}) {
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
       if (qr) {
+        if (!linkRequested) {
+          logger.info('QR ignoré — cliquez sur Générer le QR dans l\'app');
+          return;
+        }
         currentQrBase64 = await qrcode.toDataURL(qr);
         qrError = null;
-        logger.info('QR code généré — GET /api/status ou /api/qr');
+        logger.info('QR code généré — GET /api/status');
       }
       if (connection === 'open') {
         isConnected = true;
         isLinking = false;
+        linkRequested = false;
         currentQrBase64 = null;
         qrError = null;
         logger.info({ LOCATION_SLUG }, 'WhatsApp connecté');
@@ -254,22 +277,25 @@ async function connectToWhatsApp({ force = false, clearAuth = false } = {}) {
         await destroySocket();
         if (code === DisconnectReason.loggedOut) {
           isLinking = false;
+          linkRequested = false;
           currentQrBase64 = null;
           clearAuthSession();
           return;
         }
-        if (hasRegisteredSession()) {
-          setTimeout(() => {
-            connectToWhatsApp().catch((err) => logger.error({ err }, 'reconnexion échouée'));
+        if (!linkRequested && hasRegisteredSession()) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connectToWhatsApp({ silent: true }).catch((err) => logger.error({ err }, 'reconnexion échouée'));
           }, 3000);
-        } else {
-          isLinking = false;
-          currentQrBase64 = null;
+          return;
         }
+        isLinking = false;
+        if (!linkRequested) currentQrBase64 = null;
       }
     });
   } catch (err) {
     isLinking = false;
+    if (!silent) linkRequested = false;
     qrError = err.message || 'Erreur de connexion.';
     logger.error({ err }, 'connexion WhatsApp échouée');
     await destroySocket();
@@ -277,11 +303,20 @@ async function connectToWhatsApp({ force = false, clearAuth = false } = {}) {
   }
 }
 
+async function stopLinking() {
+  cancelReconnect();
+  linkRequested = false;
+  isLinking = false;
+  currentQrBase64 = null;
+  qrError = null;
+  await destroySocket();
+}
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     connected: isConnected,
-    connecting: isLinking && !isConnected,
+    connecting: linkRequested && isLinking && !isConnected,
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
   });
@@ -290,9 +325,10 @@ app.get('/api/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     connected: isConnected,
-    connecting: isLinking && !isConnected,
-    qr: currentQrBase64,
-    qrError,
+    connecting: linkRequested && isLinking && !isConnected,
+    linkRequested,
+    qr: linkRequested ? currentQrBase64 : null,
+    qrError: linkRequested ? qrError : null,
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
   });
@@ -300,28 +336,41 @@ app.get('/api/status', (req, res) => {
 
 app.get('/api/qr', (req, res) => {
   if (isConnected) return res.json({ connected: true });
-  if (!currentQrBase64) return res.status(404).json({ error: 'QR non disponible — cliquez sur Générer le QR' });
+  if (!linkRequested) {
+    return res.status(404).json({ error: 'Cliquez sur Générer le QR dans l\'app' });
+  }
+  if (!currentQrBase64) return res.status(404).json({ error: 'QR en cours de génération…' });
   res.json({ qr: currentQrBase64 });
 });
 
 app.post('/api/start', (req, res) => {
   if (isConnected) return res.json({ success: true, message: 'Already connected' });
+  linkRequested = true;
   res.json({ success: true, message: 'Started connection process' });
   connectToWhatsApp({
     force: true,
     clearAuth: true,
   }).catch((err) => {
     isLinking = false;
+    linkRequested = false;
     qrError = err.message || 'Erreur de connexion.';
     logger.error({ err }, '/api/start failed');
   });
 });
 
+app.post('/api/stop', async (req, res) => {
+  await stopLinking();
+  res.json({ success: true, message: 'Linking stopped' });
+});
+
 app.post('/api/logout', async (req, res) => {
+  cancelReconnect();
+  linkRequested = false;
   isLinking = false;
-  if (sock) {
+  const activeSock = sock;
+  if (activeSock) {
     try {
-      await sock.logout();
+      await activeSock.logout();
     } catch (err) {
       logger.warn({ err }, 'logout');
     }
@@ -338,7 +387,7 @@ app.listen(PORT, () => {
   logger.info({ PORT, LOCATION_SLUG }, 'compta-boxing-bot démarré');
   setTimeout(() => {
     if (hasRegisteredSession()) {
-      connectToWhatsApp().catch((err) => logger.error({ err }, 'reconnexion session échouée'));
+      connectToWhatsApp({ silent: true }).catch((err) => logger.error({ err }, 'reconnexion session échouée'));
     }
   }, 3000);
 });

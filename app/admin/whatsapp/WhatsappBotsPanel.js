@@ -9,7 +9,9 @@ import { useSingleAction } from '../../../lib/useSingleAction';
 function BotCard({ bot }) {
   const [status, setStatus] = useState({ loading: true });
   const [tick, setTick] = useState(0);
+  const [qrMode, setQrMode] = useState(false);
   const { run: runStart, pending: starting } = useSingleAction();
+  const { run: runStop, pending: stopping } = useSingleAction();
   const { run: runLogout, pending: loggingOut } = useSingleAction();
 
   const load = useCallback(async () => {
@@ -19,6 +21,7 @@ function BotCard({ bot }) {
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
       setStatus({ loading: false, ...data });
+      if (data.connected) setQrMode(false);
     } catch (err) {
       setStatus({ loading: false, error: err.message, connected: false, qr: null });
     }
@@ -30,14 +33,15 @@ function BotCard({ bot }) {
 
   useEffect(() => {
     if (status.connected) return undefined;
-    const delay = status.connecting || status.qr ? 4000 : 8000;
-    const id = setInterval(() => setTick((t) => t + 1), delay);
+    if (!qrMode) return undefined;
+    const id = setInterval(() => setTick((t) => t + 1), 4000);
     return () => clearInterval(id);
-  }, [status.connected, status.connecting, status.qr]);
+  }, [status.connected, qrMode]);
 
   async function start() {
     if (starting) return;
     await runStart(async () => {
+      setQrMode(true);
       try {
         const res = await fetch(`/api/bots/${bot.slug}?action=start`, {
           method: 'POST',
@@ -46,13 +50,17 @@ function BotCard({ bot }) {
         });
         const data = await parseApiJson(res);
         if (!res.ok) {
-          setStatus((s) => ({ ...s, error: data.error || 'Échec du démarrage' }));
+          setQrMode(false);
+          setStatus((s) => ({ ...s, error: data.error || 'Échec du démarrage', qr: null, connecting: false }));
         } else {
-          setStatus((s) => ({ ...s, connecting: true, error: null }));
+          setStatus((s) => ({ ...s, connecting: true, error: null, qr: null }));
         }
       } catch (err) {
+        setQrMode(false);
         setStatus((s) => ({
           ...s,
+          qr: null,
+          connecting: false,
           error: String(err.message || err).includes('abort')
             ? 'Délai dépassé — le bot démarre peut-être en arrière-plan, attendez le QR.'
             : 'Bot inaccessible.',
@@ -60,6 +68,25 @@ function BotCard({ bot }) {
       } finally {
         setTick((t) => t + 1);
       }
+    });
+  }
+
+  async function stop() {
+    if (stopping) return;
+    await runStop(async () => {
+      try {
+        await fetch(`/api/bots/${bot.slug}?action=stop`, { method: 'POST' });
+      } catch {
+        /* ignore */
+      }
+      setQrMode(false);
+      setStatus((s) => ({
+        ...s,
+        connecting: false,
+        qr: null,
+        error: null,
+      }));
+      setTick((t) => t + 1);
     });
   }
 
@@ -71,9 +98,13 @@ function BotCard({ bot }) {
       } catch {
         /* ignore */
       }
+      setQrMode(false);
       setTick((t) => t + 1);
     });
   }
+
+  const showQr = qrMode && !status.connected && status.qr;
+  const showWaiting = qrMode && !status.connected && !status.qr;
 
   return (
     <div className="card compta-bot-card">
@@ -83,7 +114,7 @@ function BotCard({ bot }) {
           <span className="badge">Chargement…</span>
         ) : status.connected ? (
           <span className="badge badge-compta-ok">WhatsApp connecté ✓</span>
-        ) : status.connecting ? (
+        ) : qrMode && status.connecting ? (
           <span className="badge">Connexion…</span>
         ) : (
           <span className="badge badge-compta-warn">À connecter</span>
@@ -94,7 +125,7 @@ function BotCard({ bot }) {
         <p className="muted">Le numéro WhatsApp de cette salle est prêt. Le client peut envoyer ses factures en photo.</p>
       ) : null}
 
-      {!status.loading && !status.connected && status.qr ? (
+      {showQr ? (
         <div className="compta-qr-wrap">
           <p><strong>Scannez ce QR code</strong> avec le téléphone du numéro WhatsApp de cette salle :</p>
           <p className="muted">WhatsApp → ⋮ → Appareils connectés → Connecter un appareil</p>
@@ -103,15 +134,14 @@ function BotCard({ bot }) {
         </div>
       ) : null}
 
-      {!status.loading && !status.connected && !status.qr ? (
+      {!status.loading && !status.connected && !showQr ? (
         <div className="compta-bot-help">
           <p>
-            {status.error
-              || (status.connecting
-                ? 'Génération du QR en cours…'
-                : 'Cliquez sur « Générer le QR » pour afficher le code.')}
+            {showWaiting
+              ? (status.error || 'Génération du QR en cours…')
+              : (status.error || 'Cliquez sur « Générer le QR » pour afficher le code.')}
           </p>
-          {!status.connecting && status.configured === false ? (
+          {!qrMode && status.configured === false ? (
             <ol className="compta-steps">
               <li>Sur Bothosting : lancer le bot (index.js + .env)</li>
               <li>Dans Supabase : renseigner <code>bot_url</code> pour cette salle</li>
@@ -122,15 +152,21 @@ function BotCard({ bot }) {
       ) : null}
 
       <div className="compta-bot-actions">
-        {!status.connected ? (
+        {!status.connected && !qrMode ? (
           <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting}>
             {starting ? 'Démarrage…' : 'Générer le QR'}
           </ActionButton>
-        ) : (
+        ) : null}
+        {!status.connected && qrMode ? (
+          <ActionButton type="button" className="btn btn-secondary" onClick={stop} loading={stopping}>
+            {stopping ? 'Fermeture…' : 'Fermer'}
+          </ActionButton>
+        ) : null}
+        {status.connected ? (
           <ActionButton type="button" className="btn btn-secondary btn-small" onClick={logout} loading={loggingOut}>
             {loggingOut ? 'Déconnexion…' : 'Déconnecter'}
           </ActionButton>
-        )}
+        ) : null}
         <button type="button" className="btn btn-secondary btn-small" onClick={load} disabled={status.loading}>
           Actualiser
         </button>
@@ -147,7 +183,7 @@ export default function WhatsappBotsPanel() {
           <p className="ik-generator-eyebrow">Étape 0 — une seule fois</p>
           <h1>Connecter les 3 WhatsApp</h1>
           <p className="ik-generator-lead">
-            Pour chaque salle, cliquez sur <strong>Générer le QR</strong>, puis scannez le code avec le téléphone WhatsApp du client.
+            Pour chaque salle : <strong>Générer le QR</strong> → scanner → <strong>Fermer</strong> si besoin.
           </p>
         </div>
       </div>

@@ -33,7 +33,7 @@ export async function POST(request, { params }) {
     await requireSession();
     const slug = params.slug;
     const action = new URL(request.url).searchParams.get('action');
-    if (!['start', 'logout'].includes(action)) {
+    if (!['start', 'stop', 'logout'].includes(action)) {
       return NextResponse.json({ error: `Action inconnue: ${action}` }, { status: 400 });
     }
 
