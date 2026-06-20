@@ -57,6 +57,7 @@ async function bootstrap() {
   if (fs.existsSync(rootEnv)) fs.copyFileSync(rootEnv, botEnv);
   else { fs.mkdirSync(BOTS_DIR, { recursive: true }); fs.writeFileSync(botEnv, buildEnv()); }
   if (!runCommand('npm install --omit=dev', BOTS_DIR)) process.exit(1);
+  process.env.BOT_DATA_DIR = path.join(__dirname, 'bot-data');
   process.chdir(BOTS_DIR);
   require(path.join(BOTS_DIR, 'index.js'));
 }
