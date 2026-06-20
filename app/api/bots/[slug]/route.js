@@ -5,6 +5,7 @@ import { getSupabase } from '../../../../lib/supabase';
 import { fetchBotAction, fetchBotStatus, botUrlFromLocation } from '../../../../lib/bots';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 export async function GET(request, { params }) {
   try {
