@@ -1,0 +1,562 @@
+/* ── Login ───────────────────────────────────────────────────────────── */
+.ik-login-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.ik-login-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(251, 191, 36, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 80%, rgba(37, 99, 235, 0.15), transparent 50%),
+    linear-gradient(145deg, #0f172a 0%, #1e3a5f 45%, #0f172a 100%);
+}
+
+.ik-login-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  max-width: 920px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.ik-login-brand {
+  padding: 2.5rem 2rem;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.9), rgba(30, 58, 95, 0.85));
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ik-login-logo {
+  height: 44px;
+  width: auto;
+  margin-bottom: 1.5rem;
+  object-fit: contain;
+  filter: brightness(1.05);
+}
+
+.ik-login-brand h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.ik-login-brand > p {
+  margin: 0 0 1.5rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.ik-login-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ik-login-features li {
+  padding: 0.45rem 0 0.45rem 1.25rem;
+  position: relative;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ik-login-features li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.85rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mobile-gold);
+}
+
+.ik-login-card {
+  padding: 2.5rem 2rem;
+  background: #fff;
+}
+
+.ik-login-card h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.ik-login-lead {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ik-login-submit {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  font-size: 1rem;
+}
+
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrap input {
+  width: 100%;
+  padding-right: 2.75rem;
+  margin-bottom: 0;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── Générateur ──────────────────────────────────────────────────────── */
+.ik-admin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.ik-generator {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.ik-generator-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  border-radius: 16px;
+  color: #fff;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.2);
+}
+
+.ik-generator-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--mobile-gold);
+  font-weight: 600;
+}
+
+.ik-generator-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.25rem, 3vw, 1.65rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.ik-generator-lead {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ik-generator-stat {
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.ik-generator-stat span {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.ik-generator-stat strong {
+  font-size: 1.1rem;
+  color: var(--mobile-gold);
+}
+
+.ik-generator-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+  flex: 1;
+  min-height: 0;
+}
+
+.ik-generator-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ik-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.ik-section-head h2 {
+  margin: 0;
+}
+
+.ik-reset-btn {
+  flex-shrink: 0;
+}
+
+.ik-generator-freetext h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.ik-freetext-hint {
+  margin: 0 0 0.75rem;
+}
+
+.ik-generator-freetext textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  font-family: inherit;
+  font-size: 0.92rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.ik-freetext-btn {
+  width: 100%;
+}
+
+.ik-form-error {
+  margin: 0;
+}
+
+.ik-preview-table {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ik-preview-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ik-preview-table th,
+.ik-preview-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+}
+
+.ik-preview-table th {
+  background: var(--bg);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ik-edit-hint {
+  margin: 0 0 0.65rem;
+}
+
+.ik-row-editable {
+  cursor: pointer;
+}
+
+.ik-row-editable:hover td {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.ik-row-editing td {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.ik-row-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  background: var(--surface, #fff);
+}
+
+.ik-row-input--num {
+  max-width: 5.5rem;
+}
+
+.ik-row-edit-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.ik-generator-form h2,
+.ik-generator-result h2,
+.ik-history-card h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.ik-generator-result h2,
+.ik-history-card h2 {
+  margin: 0 0 1rem;
+}
+
+.ik-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ik-history-head h2 {
+  margin: 0;
+}
+
+.ik-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.ik-input-suffix {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ik-input-suffix input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.ik-input-suffix span {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ik-generate-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.ik-result-empty,
+.ik-result-loading {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.ik-result-summary {
+  padding: 1rem;
+  background: var(--bg);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+}
+
+.ik-result-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.ik-result-metrics > div {
+  padding: 0.75rem;
+  background: var(--bg);
+  border-radius: 10px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+
+.ik-result-metrics span {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.ik-result-metrics strong {
+  font-size: 1.15rem;
+  color: var(--navy);
+}
+
+.ik-result-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.ik-sheet-preview table {
+  font-size: 0.82rem;
+}
+
+.ik-history-card {
+  margin-bottom: 0;
+}
+
+/* Desktop layout shell */
+@media (min-width: 1024px) {
+  .app-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  .app-main-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .ik-generator-result {
+    min-height: 320px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 1023px) {
+  .ik-generator-hero {
+    flex-direction: column;
+    border-radius: 12px;
+  }
+
+  .ik-generator-stat {
+    align-self: flex-start;
+  }
+
+  .ik-generator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ik-result-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .ik-result-actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .ik-login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .ik-login-brand {
+    padding: 1.75rem 1.5rem;
+  }
+
+  .ik-login-features {
+    display: none;
+  }
+
+  .ik-login-card {
+    padding: 1.75rem 1.5rem;
+  }
+
+  .ik-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ik-generator-hero {
+    padding: 1rem 1.15rem;
+  }
+
+  .ik-result-actions {
+    flex-direction: column;
+  }
+
+  .ik-result-actions .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .ik-login-page {
+    padding: 0.75rem;
+  }
+
+  .ik-login-shell {
+    border-radius: 16px;
+  }
+}
+
+/* Page administrateurs */
+@media (max-width: 767px) {
+  .ik-utilisateurs-page h1 {
+    font-size: 1.25rem;
+  }
+
+  .ik-utilisateurs-page .table-wrap table {
+    min-width: 520px;
+    font-size: 0.85rem;
+  }
+}

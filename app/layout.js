@@ -1,5 +1,6 @@
 import AppBoot from './components/AppBoot';
 import './globals.css';
+import './ik-chat.css';
 import './compta.css';
 
 export const metadata = {
