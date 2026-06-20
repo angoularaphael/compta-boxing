@@ -4,6 +4,7 @@ import { getSupabase } from '../../../../lib/supabase';
 import { getLocationBySlug, parseAccountingMonth } from '../../../../lib/locations';
 import { describeError } from '../../../../lib/apiJson';
 import { ingestInvoiceFile, applyInvoiceOcr } from '../../../../lib/invoices';
+import { notifyWhatsAppInvoiceReady } from '../../../../lib/bot-notify';
 import { parseBankStatementFile } from '../../../../lib/statement-parse';
 import {
   BUCKET_STATEMENTS,
@@ -113,7 +114,12 @@ export async function POST(request) {
       deferOcr: true,
     });
 
-    waitUntil(applyInvoiceOcr(invoice.id, buffer, mimeType, fileName));
+    waitUntil(
+      (async () => {
+        const updated = await applyInvoiceOcr(invoice.id, buffer, mimeType, fileName);
+        await notifyWhatsAppInvoiceReady(location, updated);
+      })()
+    );
 
     return NextResponse.json({
       success: true,
