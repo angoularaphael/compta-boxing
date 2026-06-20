@@ -46,7 +46,7 @@ const ENV_ALLOWED_PHONES = String(process.env.ALLOWED_PHONES || '')
   .filter(isValidPhoneDigits);
 
 const DATA_DIR = path.join(
-  process.env.BOT_DATA_DIR || path.join(__dirname, 'auth'),
+  process.env.BOT_DATA_DIR || path.join(__dirname, 'data'),
   LOCATION_SLUG || 'default'
 );
 const AUTH_DIR = path.join(DATA_DIR, 'wa-session');
@@ -100,14 +100,47 @@ function loadSudoConfig() {
 
 loadSudoConfig();
 
-function migrateLegacyData() {
-  const legacyCreds = path.join(LEGACY_AUTH_DIR, 'creds.json');
-  const newCreds = path.join(AUTH_DIR, 'creds.json');
-  if (fs.existsSync(legacyCreds) && !fs.existsSync(newCreds)) {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.cpSync(LEGACY_AUTH_DIR, AUTH_DIR, { recursive: true });
-    logger.info({ DATA_DIR }, 'session WhatsApp migrée');
+function copyAuthFiles(srcDir, destDir) {
+  if (!fs.existsSync(srcDir)) return false;
+  const srcResolved = path.resolve(srcDir);
+  const destResolved = path.resolve(destDir);
+  if (srcResolved === destResolved) return false;
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+  if (destResolved.startsWith(`${srcResolved}${path.sep}`)) {
+    let copied = false;
+    for (const name of fs.readdirSync(srcDir)) {
+      if (name === 'wa-session' || name === 'sudo-phones.json') continue;
+      const srcPath = path.join(srcDir, name);
+      if (!fs.statSync(srcPath).isFile()) continue;
+      const destPath = path.join(destDir, name);
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        copied = true;
+      }
+    }
+    return copied;
   }
+
+  fs.cpSync(srcDir, destDir, { recursive: true, force: true });
+  return true;
+}
+
+function migrateLegacyData() {
+  const newCreds = path.join(AUTH_DIR, 'creds.json');
+  if (!fs.existsSync(newCreds)) {
+    const legacyCreds = path.join(LEGACY_AUTH_DIR, 'creds.json');
+    const nestedLegacyCreds = path.join(LEGACY_AUTH_DIR, 'wa-session', 'creds.json');
+    const srcDir = fs.existsSync(legacyCreds)
+      ? LEGACY_AUTH_DIR
+      : fs.existsSync(nestedLegacyCreds)
+        ? path.join(LEGACY_AUTH_DIR, 'wa-session')
+        : null;
+    if (srcDir && copyAuthFiles(srcDir, AUTH_DIR)) {
+      logger.info({ from: srcDir, to: AUTH_DIR }, 'session WhatsApp migrée');
+    }
+  }
+
   const legacySudo = path.join(LEGACY_AUTH_DIR, 'sudo-phones.json');
   if (fs.existsSync(legacySudo) && !fs.existsSync(SUDO_CONFIG_FILE)) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
