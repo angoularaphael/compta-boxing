@@ -64,6 +64,7 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 6;
 const socketLogger = pino({ level: 'silent' });
+const lidPhoneCache = new Map();
 
 const app = express();
 app.use(cors());
@@ -76,6 +77,73 @@ function ensureConfig() {
 
 function phoneFromJid(jid) {
   return normalizePhone(String(jid || '').split('@')[0]);
+}
+
+function isPnJid(jid) {
+  const s = String(jid || '');
+  return s.includes('@s.whatsapp.net') || s.endsWith('@c.us');
+}
+
+function isLidJid(jid) {
+  return String(jid || '').includes('@lid');
+}
+
+function storeLidMapping(lid, pn) {
+  const lidKey = normalizePhone(lid);
+  const phone = normalizePhone(pn);
+  if (lidKey && phone && isValidPhoneDigits(phone)) {
+    lidPhoneCache.set(lidKey, phone);
+  }
+}
+
+function cacheLidFromMessage(key) {
+  if (!key) return;
+  const primary = key.participant || key.remoteJid;
+  const alt = key.participantAlt || key.remoteJidAlt;
+  if (primary && alt && (isLidJid(primary) || !isPnJid(primary)) && isPnJid(alt)) {
+    storeLidMapping(primary, alt);
+  }
+}
+
+function resolveSenderPhone(msg) {
+  const key = msg.key || {};
+  if (msg.key?.fromMe) {
+    return sock?.user?.id ? normalizePhone(sock.user.id) : '';
+  }
+  for (const altJid of [key.participantAlt, key.remoteJidAlt]) {
+    if (altJid && isPnJid(altJid)) {
+      const phone = normalizePhone(altJid);
+      if (isValidPhoneDigits(phone)) return phone;
+    }
+  }
+  const primary = key.participant || key.remoteJid || '';
+  if (primary && isPnJid(primary)) {
+    const phone = normalizePhone(primary);
+    if (isValidPhoneDigits(phone)) return phone;
+  }
+  const lidKey = normalizePhone(primary);
+  if (lidKey && lidPhoneCache.has(lidKey)) {
+    return lidPhoneCache.get(lidKey);
+  }
+  if (sock?.signalRepository?.lidMapping?.getPNForLID) {
+    try {
+      const lidJid = isLidJid(primary) ? primary : `${lidKey}@lid`;
+      const pn = sock.signalRepository.lidMapping.getPNForLID(lidJid);
+      if (pn) {
+        const phone = normalizePhone(pn);
+        if (isValidPhoneDigits(phone)) {
+          storeLidMapping(lidKey, phone);
+          return phone;
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'getPNForLID');
+    }
+  }
+  if (isValidPhoneDigits(lidKey) && !isLidJid(primary)) {
+    return lidKey;
+  }
+  return '';
 }
 
 let sudoConfig = { sudoPhones: [] };
@@ -174,7 +242,16 @@ function isAllowedPhone(phone) {
 }
 
 function isAllowed(msg) {
-  return isAllowedPhone(phoneFromJid(msg.key?.remoteJid));
+  cacheLidFromMessage(msg.key);
+  const phone = resolveSenderPhone(msg);
+  if (!phone) {
+    logger.warn(
+      { jid: msg.key?.remoteJid, alt: msg.key?.remoteJidAlt },
+      'numéro expéditeur non résolu (LID)'
+    );
+    return false;
+  }
+  return isAllowedPhone(phone);
 }
 
 function isSudoAdmin(phone) {
@@ -268,9 +345,11 @@ async function reactToCommand(msg) {
 }
 
 async function sendUnauthorized(msg) {
+  const phone = resolveSenderPhone(msg) || phoneFromJid(msg.key?.remoteJid);
   await sock.sendMessage(msg.key.remoteJid, {
     text: [
       `⛔ Numéro non autorisé — ${LOCATION_NAME}`,
+      phone ? `Identifiant détecté : ${phone}` : 'Numéro non identifié (LID WhatsApp)',
       '',
       'Demandez à l\'admin d\'exécuter :',
       '`.setsudo VOTRE_NUMERO`',
@@ -345,7 +424,7 @@ async function postToCompta(buffer, meta, fromPhone, docType, accountingMonth) {
 }
 
 async function handleMediaMessage(msg, options = {}) {
-  const fromPhone = phoneFromJid(msg.key.remoteJid);
+  const fromPhone = resolveSenderPhone(msg) || phoneFromJid(msg.key.remoteJid);
 
   if (!isAllowed(msg)) {
     await sendUnauthorized(msg);
@@ -452,7 +531,7 @@ async function handleUploadCommand(msg, text) {
 
 async function handleCommand(msg, text) {
   const sender = msg.key.remoteJid;
-  const senderPhone = phoneFromJid(sender);
+  const senderPhone = resolveSenderPhone(msg) || phoneFromJid(sender);
   const cleanText = text.trim().toLowerCase();
   const cmd = cleanText.split(/\s+/)[0].split('(')[0];
 
@@ -537,6 +616,7 @@ async function handleIncomingMessages(m) {
   for (const msg of m.messages || []) {
     try {
       if (!msg.message || msg.key.fromMe) continue;
+      cacheLidFromMessage(msg.key);
 
       const text = extractText(msg);
       if (text.trim().startsWith('.')) {
@@ -615,6 +695,7 @@ async function destroySocket() {
     old.ev.removeAllListeners('connection.update');
     old.ev.removeAllListeners('creds.update');
     old.ev.removeAllListeners('messages.upsert');
+    old.ev.removeAllListeners('lid-mapping.update');
     await old.end(undefined);
   } catch (err) {
     logger.warn({ err }, 'fermeture socket');
@@ -662,6 +743,17 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
     });
 
     sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('lid-mapping.update', (update) => {
+      if (!update || typeof update !== 'object') return;
+      const entries = Array.isArray(update)
+        ? update
+        : Object.entries(update).map(([lid, pn]) => ({ lid, pn }));
+      for (const entry of entries) {
+        const lid = entry.lid || entry[0];
+        const pn = entry.pn || entry[1];
+        if (lid && pn) storeLidMapping(lid, pn);
+      }
+    });
     sock.ev.on('messages.upsert', handleIncomingMessages);
 
     sock.ev.on('connection.update', async (update) => {
