@@ -1,0 +1,20 @@
+{
+  "name": "compta-boxing-bot",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc11",
+    "axios": "^1.16.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "form-data": "^4.0.2",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4"
+  }
+}
