@@ -169,3 +169,13 @@
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+
+.compta-bot-hint-warn {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 0.85rem;
+}
