@@ -5,11 +5,13 @@ import { BOTS } from '../../../lib/bot-config';
 import { parseApiJson } from '../../../lib/apiJson';
 import ActionButton from '../../components/ActionButton';
 import { useSingleAction } from '../../../lib/useSingleAction';
+import { fetchBotStatusDirect, postBotActionDirect } from './bot-client';
 
 function BotCard({ bot }) {
   const [status, setStatus] = useState({ loading: true });
   const [tick, setTick] = useState(0);
   const [qrMode, setQrMode] = useState(false);
+  const [botUrl, setBotUrl] = useState(null);
   const { run: runStart, pending: starting } = useSingleAction();
   const { run: runStop, pending: stopping } = useSingleAction();
   const { run: runLogout, pending: loggingOut } = useSingleAction();
@@ -18,12 +20,35 @@ function BotCard({ bot }) {
     setStatus((s) => ({ ...s, loading: true }));
     try {
       const res = await fetch(`/api/bots/${bot.slug}`, { cache: 'no-store' });
-      const data = await parseApiJson(res);
-      if (!res.ok) throw new Error(data.error);
-      setStatus({ loading: false, ...data });
-      if (data.connected) {
+      const config = await parseApiJson(res);
+      if (!res.ok) throw new Error(config.error);
+
+      const url = config.botUrl || null;
+      setBotUrl(url);
+
+      if (!config.configured || !url) {
+        setStatus({
+          loading: false,
+          configured: false,
+          connected: false,
+          connecting: false,
+          qr: null,
+          error: 'URL du bot non configurée (Supabase bot_url ou BOT_URL_* sur Vercel).',
+        });
+        return;
+      }
+
+      const live = await fetchBotStatusDirect(url);
+      setStatus({
+        loading: false,
+        slug: config.slug,
+        label: config.label,
+        botUrl: url,
+        ...live,
+      });
+      if (live.connected) {
         setQrMode(false);
-      } else if (data.connecting) {
+      } else if (live.connecting) {
         setQrMode(true);
       }
     } catch (err) {
@@ -43,34 +68,18 @@ function BotCard({ bot }) {
   }, [status.connected, qrMode, status.connecting]);
 
   async function start() {
-    if (starting) return;
+    if (starting || !botUrl) return;
     await runStart(async () => {
       setQrMode(true);
       try {
-        const res = await fetch(`/api/bots/${bot.slug}?action=start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'qr' }),
-        });
-        const data = await parseApiJson(res);
-        if (!res.ok) {
-          setQrMode(false);
-          setStatus((s) => ({
-            ...s,
-            loading: false,
-            error: data.error || 'Échec du démarrage',
-            qr: null,
-            connecting: false,
-          }));
-        } else {
-          setStatus((s) => ({
-            ...s,
-            loading: false,
-            connecting: true,
-            error: null,
-            qr: null,
-          }));
-        }
+        await postBotActionDirect(botUrl, 'start');
+        setStatus((s) => ({
+          ...s,
+          loading: false,
+          connecting: true,
+          error: null,
+          qr: null,
+        }));
       } catch (err) {
         setQrMode(false);
         setStatus((s) => ({
@@ -78,9 +87,7 @@ function BotCard({ bot }) {
           loading: false,
           qr: null,
           connecting: false,
-          error: String(err.message || err).includes('abort')
-            ? 'Délai dépassé — le bot démarre peut-être en arrière-plan, attendez le QR.'
-            : (err.message || 'Bot inaccessible.'),
+          error: err.message || 'Bot inaccessible.',
         }));
       } finally {
         setTick((t) => t + 1);
@@ -89,10 +96,10 @@ function BotCard({ bot }) {
   }
 
   async function stop() {
-    if (stopping) return;
+    if (stopping || !botUrl) return;
     await runStop(async () => {
       try {
-        await fetch(`/api/bots/${bot.slug}?action=stop`, { method: 'POST' });
+        await postBotActionDirect(botUrl, 'stop');
       } catch {
         /* ignore */
       }
@@ -102,16 +109,17 @@ function BotCard({ bot }) {
         connecting: false,
         qr: null,
         error: null,
+        qrError: null,
       }));
       setTick((t) => t + 1);
     });
   }
 
   async function logout() {
-    if (loggingOut) return;
+    if (loggingOut || !botUrl) return;
     await runLogout(async () => {
       try {
-        await fetch(`/api/bots/${bot.slug}?action=logout`, { method: 'POST' });
+        await postBotActionDirect(botUrl, 'logout');
       } catch {
         /* ignore */
       }
@@ -174,7 +182,7 @@ function BotCard({ bot }) {
 
       <div className="compta-bot-actions">
         {!status.connected && !qrMode ? (
-          <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting}>
+          <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting} disabled={!botUrl && !status.loading}>
             {starting ? 'Démarrage…' : 'Générer le QR'}
           </ActionButton>
         ) : null}
@@ -204,7 +212,7 @@ export default function WhatsappBotsPanel() {
           <p className="ik-generator-eyebrow">Étape 0 — une seule fois</p>
           <h1>Connecter les 3 WhatsApp</h1>
           <p className="ik-generator-lead">
-            Pour chaque salle : <strong>Générer le QR</strong> → scanner → <strong>Fermer</strong> si besoin.
+            Pour chaque salle : <strong>Générer le QR</strong> → scanner → attendre <strong>WhatsApp connecté ✓</strong>.
           </p>
         </div>
       </div>
