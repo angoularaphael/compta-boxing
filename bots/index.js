@@ -402,6 +402,10 @@ function mediaMeta(msg) {
 }
 
 function formatUploadError(err) {
+  const status = err?.response?.status;
+  if (status === 504) {
+    return 'Site trop lent (timeout) — réessayez ou vérifiez dans l\'admin si la facture est là.';
+  }
   const data = err?.response?.data;
   if (data) {
     if (typeof data === 'string') return data.slice(0, 400);
@@ -506,6 +510,7 @@ async function handleMediaMessage(msg, options = {}) {
       });
     } else {
       const inv = result.invoice || {};
+      const ocrNote = result.ocrPending ? '\n🔍 Montant/date : analyse en cours…' : null;
       await sock.sendMessage(msg.key.remoteJid, {
         text: [
           `✅ Facture enregistrée — ${LOCATION_NAME}`,
@@ -513,6 +518,7 @@ async function handleMediaMessage(msg, options = {}) {
           inv.amount_ttc != null ? `💶 ${Number(inv.amount_ttc).toFixed(2)} €` : null,
           inv.vendor_name ? `🏢 ${inv.vendor_name}` : null,
           `📁 Mois : ${inv.accounting_month || '—'}`,
+          ocrNote,
         ]
           .filter(Boolean)
           .join('\n'),
