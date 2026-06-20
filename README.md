@@ -107,16 +107,28 @@ Vérifier : `http://<ip>:3011/api/health` → `"connected": true`
 
 | Action | Comment |
 |--------|---------|
-| Envoyer une facture | Photo ou PDF, sans texte |
-| Envoyer un relevé | PDF avec légende `releve 2026-03` |
+| Envoyer une facture | Photo ou PDF directement, ou répondre au fichier avec `.upload` |
+| Envoyer un relevé | PDF + légende `releve 2026-03`, ou `.upload releve 2026-03` en réponse |
+| Autoriser un numéro | Admin : `.setsudo 33612345678` |
+| Aide | `.menu` sur WhatsApp |
 | Choisir la salle | Envoyer sur le **bon numéro** WhatsApp |
 
 Le bot répond automatiquement : facture reçue, date, montant, mois comptable.
 
+### Commandes WhatsApp
+
+- `.menu` — aide
+- `.upload` — répondre à une photo/PDF pour l'envoyer au site
+- `.upload releve 2026-03` — relevé bancaire (réponse au PDF)
+- `.setsudo NUMERO` — admin : autoriser un numéro (ex. `.setsudo 33612345678`)
+- `.unsudo NUMERO` — retirer un numéro
+- `.sudo` — liste des numéros autorisés
+- `.ping` — test de connexion
+
 ### Dépannage
 
 - **Secret invalide** → vérifier `WHATSAPP_WEBHOOK_SECRET` identique Vercel + bot
-- **Numéro non autorisé** → ajouter le numéro dans `ALLOWED_PHONES`
+- **Numéro non autorisé** → admin envoie `.setsudo VOTRE_NUMERO` ou ajouter dans `ALLOWED_PHONES`
 - **Bucket error** → créer les buckets Supabase Storage
 - **OCR vide** → normal sur photo floue ; corriger dans le back-office
 
