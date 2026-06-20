@@ -528,7 +528,9 @@ async function handleMediaMessage(msg, options = {}) {
     } else {
       const inv = result.invoice || {};
       const receivedAt = formatDateTimeFr(inv.created_at);
-      const ocrNote = result.ocrPending ? '🔍 Analyse Groq en cours…' : null;
+      const ocrNote = result.ocrPending
+        ? '🔍 Analyse en cours — 2ᵉ message dans quelques secondes.'
+        : null;
       await sock.sendMessage(msg.key.remoteJid, {
         text: [
           `✅ Facture enregistrée — ${LOCATION_NAME}`,
@@ -958,6 +960,34 @@ app.post('/api/logout', async (req, res) => {
   qrError = null;
   clearAuthSession();
   res.json({ success: true, message: 'Logged out' });
+});
+
+function verifyNotifySecret(req) {
+  const header = req.headers['x-webhook-secret'] || '';
+  if (WEBHOOK_SECRET && header === WEBHOOK_SECRET) return true;
+  return false;
+}
+
+app.post('/api/notify', async (req, res) => {
+  if (!verifyNotifySecret(req)) {
+    return res.status(403).json({ error: 'Secret invalide' });
+  }
+  if (!isConnected || !sock) {
+    return res.status(503).json({ error: 'WhatsApp non connecté' });
+  }
+  const phone = normalizePhone(req.body?.phone || '');
+  const text = String(req.body?.text || '').trim();
+  if (!isValidPhoneDigits(phone) || !text) {
+    return res.status(400).json({ error: 'phone et text requis' });
+  }
+  try {
+    const jid = `${phone}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text });
+    res.json({ success: true });
+  } catch (err) {
+    logger.warn({ err, phone }, '/api/notify');
+    res.status(500).json({ error: err.message || 'Envoi impossible' });
+  }
 });
 
 app.listen(PORT, () => {
