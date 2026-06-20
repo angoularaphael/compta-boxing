@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { getSupabase } from '../../../../lib/supabase';
-import { getLocationBySlug } from '../../../../lib/locations';
-import { ingestInvoiceFile } from '../../../../lib/invoices';
+import { getLocationBySlug, parseAccountingMonth } from '../../../../lib/locations';
+import { describeError } from '../../../../lib/apiJson';
+import { ingestInvoiceFile, applyInvoiceOcr } from '../../../../lib/invoices';
 import { parseBankStatementFile } from '../../../../lib/statement-parse';
 import {
   BUCKET_STATEMENTS,
   buildStatementPath,
   uploadFile,
 } from '../../../../lib/storage';
-import { parseAccountingMonth } from '../../../../lib/locations';
-import { describeError } from '../../../../lib/apiJson';
+
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 async function verifyLocationSecret(request, location) {
   const header = request.headers.get('x-webhook-secret') || '';
@@ -107,12 +110,16 @@ export async function POST(request) {
       mimeType,
       source: 'whatsapp',
       sourcePhone,
+      deferOcr: true,
     });
+
+    waitUntil(applyInvoiceOcr(invoice.id, buffer, mimeType, fileName));
 
     return NextResponse.json({
       success: true,
       type: 'invoice',
       invoice,
+      ocrPending: true,
     });
   } catch (err) {
     console.error('[webhook/whatsapp]', err);
