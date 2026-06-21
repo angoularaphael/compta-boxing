@@ -111,33 +111,41 @@ export default function ComptaDashboard() {
     }
   }
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setMessage('');
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setMessage('');
+    }
     try {
-      const res = await fetch(`/api/invoices?location=${location}&month=${month}`);
+      const res = await fetch(`/api/invoices?location=${location}&month=${month}`, {
+        cache: 'no-store',
+      });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
       setInvoices(data.invoices || []);
       setInvoiceCount((data.invoices || []).length);
-      const stRes = await fetch(`/api/statements?location=${location}&month=${month}`);
-      const stData = await parseApiJson(stRes);
-      setHasStatement(Boolean(stData.statement));
+      if (!silent) {
+        const stRes = await fetch(`/api/statements?location=${location}&month=${month}`);
+        const stData = await parseApiJson(stRes);
+        setHasStatement(Boolean(stData.statement));
+      }
     } catch (err) {
-      setMessage(err.message);
+      if (!silent) setMessage(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [location, month]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
-    const hasPending = invoices.some((inv) => inv.ocr_status === 'pending');
-    if (!hasPending) return undefined;
-    const timer = setInterval(() => { load(); }, 5000);
+    const timer = setInterval(() => {
+      load({ silent: true });
+    }, 5000);
     return () => clearInterval(timer);
-  }, [invoices, load]);
+  }, [load]);
 
   async function uploadInvoice(e) {
     const file = e.target.files?.[0];
@@ -248,6 +256,9 @@ export default function ComptaDashboard() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Factures reçues ce mois</h3>
+        <p className="muted" style={{ marginTop: '-0.25rem', fontSize: '0.85rem' }}>
+          Mise à jour automatique toutes les 5 secondes (WhatsApp inclus).
+        </p>
         {!hasStatement && invoiceCount > 0 ? (
           <p className="form-hint">
             Prochaine étape : allez sur <Link href="/admin/match">Vérifier le mois</Link> pour importer le relevé bancaire.
