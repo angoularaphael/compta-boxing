@@ -52,7 +52,7 @@ function BotCard({ bot }) {
     return () => clearInterval(id);
   }, [status.connected, qrMode, status.connecting]);
 
-  async function start() {
+  async function start({ forceQr = false } = {}) {
     if (starting) return;
     await runStart(async () => {
       setQrMode(true);
@@ -60,7 +60,7 @@ function BotCard({ bot }) {
         const res = await fetch(`/api/bots/${bot.slug}?action=start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'qr' }),
+          body: JSON.stringify({ method: 'qr', forceQr }),
           signal: AbortSignal.timeout(25000),
         });
         const data = await parseApiJson(res);
@@ -177,11 +177,14 @@ function BotCard({ bot }) {
           {status.qrError ? <p className="error">{status.qrError}</p> : null}
           <p>
             {showConnecting
-              ? 'QR scanné — finalisation de la connexion…'
+              ? 'QR scanné — finalisation de la connexion (10–30 s)…'
               : showWaiting
                 ? (status.error || 'Génération du QR en cours…')
                 : (status.error || 'Cliquez sur « Générer le QR » pour afficher le code.')}
           </p>
+          {qrMode && !status.connected && status.connecting && !status.qr ? (
+            <p className="muted">Ne fermez pas cette page pendant la connexion.</p>
+          ) : null}
           {!qrMode && status.configured === false ? (
             <ol className="compta-steps">
               <li>Sur Bothosting : lancer le bot (index.js + .env)</li>
@@ -194,8 +197,18 @@ function BotCard({ bot }) {
 
       <div className="compta-bot-actions">
         {!status.connected && !qrMode ? (
-          <ActionButton type="button" className="btn ik-generate-btn" onClick={start} loading={starting}>
+          <ActionButton type="button" className="btn ik-generate-btn" onClick={() => start()} loading={starting}>
             {starting ? 'Démarrage…' : 'Générer le QR'}
+          </ActionButton>
+        ) : null}
+        {!status.connected && qrMode && status.qrError ? (
+          <ActionButton
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => start({ forceQr: true })}
+            loading={starting}
+          >
+            Nouveau QR
           </ActionButton>
         ) : null}
         {!status.connected && qrMode ? (

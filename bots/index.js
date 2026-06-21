@@ -733,7 +733,12 @@ function disconnectReasonName(code) {
 }
 
 function shouldMaintainWhatsAppSession() {
+  if (linkRequested) return false;
   return sessionEstablished || hasRegisteredSession();
+}
+
+function shouldReconnectAfterClose() {
+  return linkRequested || sessionEstablished || hasRegisteredSession();
 }
 
 function reconnectDelayForCode(statusCode) {
@@ -938,8 +943,12 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
           scheduleReconnect(3000, { clearAuth: true });
           return;
         }
-        if (shouldMaintainWhatsAppSession()) {
-          scheduleReconnect(reconnectDelayForCode(statusCode), { clearAuth: false });
+        if (shouldReconnectAfterClose()) {
+          const delay =
+            linkRequested && statusCode === DisconnectReason.restartRequired
+              ? 500
+              : reconnectDelayForCode(statusCode);
+          scheduleReconnect(delay, { clearAuth: false });
           return;
         }
         isLinking = false;
@@ -948,14 +957,15 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
     });
   } catch (err) {
     isLinking = false;
-    if (!silent) linkRequested = false;
     qrError = err.message || 'Erreur de connexion.';
     logger.error({ err }, 'connexion WhatsApp échouée');
     await destroySocket();
-    if (shouldMaintainWhatsAppSession() && !clearAuth) {
-      scheduleReconnect(5000, { clearAuth: false });
+    if (linkRequested || (shouldMaintainWhatsAppSession() && !clearAuth)) {
+      scheduleReconnect(linkRequested ? 3000 : 5000, { clearAuth: false });
+    } else if (!silent) {
+      linkRequested = false;
     }
-    throw err;
+    if (silent) throw err;
   }
 }
 
@@ -978,7 +988,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     connected: isConnected,
-    connecting: isConnectingState() && (linkRequested || shouldMaintainWhatsAppSession()),
+    connecting: isConnectingState() && (linkRequested || shouldReconnectAfterClose()),
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
     allowedPhones: getAllAllowedPhones().length,
@@ -988,7 +998,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     connected: isConnected,
-    connecting: isConnectingState() && (linkRequested || shouldMaintainWhatsAppSession()),
+    connecting: isConnectingState() && (linkRequested || shouldReconnectAfterClose()),
     linkRequested,
     qr: linkRequested ? currentQrBase64 : null,
     qrError: linkRequested ? qrError : null,
@@ -1011,19 +1021,23 @@ app.post('/api/start', (req, res) => {
   cancelReconnect();
   reconnectAttempts = 0;
   linkRequested = true;
-  const hasSession = hasRegisteredSession();
+  const forceQr = Boolean(req.body?.forceQr);
+  const hasSession = hasRegisteredSession() && !forceQr;
   res.json({
     success: true,
-    message: hasSession ? 'Reconnexion en cours' : 'Started connection process',
+    message: hasSession ? 'Reconnexion en cours' : 'Génération du QR en cours',
   });
   connectToWhatsApp({
     force: true,
-    clearAuth: !hasSession,
+    clearAuth: forceQr || !hasRegisteredSession(),
   }).catch((err) => {
-    isLinking = false;
-    linkRequested = false;
     qrError = err.message || 'Erreur de connexion.';
     logger.error({ err }, '/api/start failed');
+    if (linkRequested) {
+      scheduleReconnect(3000, { clearAuth: false });
+    } else {
+      isLinking = false;
+    }
   });
 });
 
@@ -1089,7 +1103,9 @@ app.post('/api/notify', async (req, res) => {
 
 function startSessionWatchdog() {
   setInterval(() => {
-    if (!shouldMaintainWhatsAppSession() || isConnected || isLinking || reconnectTimer) return;
+    if (linkRequested || !shouldMaintainWhatsAppSession() || isConnected || isLinking || reconnectTimer) {
+      return;
+    }
     logger.info({ LOCATION_SLUG }, 'watchdog: reconnexion session active');
     reconnectAttempts = 0;
     connectToWhatsApp({ silent: true, force: true, clearAuth: false }).catch((err) =>
@@ -1100,11 +1116,10 @@ function startSessionWatchdog() {
 
 app.listen(PORT, () => {
   logger.info({ PORT, LOCATION_SLUG, dataDir: DATA_DIR }, 'compta-boxing-bot démarré');
-  if (hasRegisteredSession()) sessionEstablished = true;
   startHttpSelfPing();
   startSessionWatchdog();
   setTimeout(() => {
-    if (hasRegisteredSession()) {
+    if (hasRegisteredSession() && !linkRequested && !isConnected) {
       connectToWhatsApp({ silent: true, force: true, clearAuth: false }).catch(
         (err) => logger.error({ err }, 'reconnexion session échouée')
       );
