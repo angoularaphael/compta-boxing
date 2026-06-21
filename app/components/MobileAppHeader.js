@@ -12,7 +12,7 @@ export default function MobileAppHeader() {
   return (
     <header className="mobile-app-header">
       <div className="mobile-app-brand">
-        <Image src="/logo.svg" alt="Boxing Center" width={110} height={31} className="mobile-brand-logo" priority />
+        <Image src="/logo.png" alt="Boxing Center" width={110} height={28} className="mobile-brand-logo" priority />
         <span className="mobile-brand-tag mobile-brand-tag-neutral">COMPTA</span>
       </div>
 

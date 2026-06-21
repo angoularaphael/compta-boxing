@@ -148,8 +148,8 @@ function BotCard({ bot }) {
           <span className="badge">Chargement…</span>
         ) : status.connected ? (
           <span className="badge badge-compta-ok">WhatsApp connecté ✓</span>
-        ) : qrMode && status.connecting ? (
-          <span className="badge">Connexion…</span>
+        ) : status.connecting ? (
+          <span className="badge">{qrMode ? 'Connexion…' : 'Reconnexion…'}</span>
         ) : (
           <span className="badge badge-compta-warn">À connecter</span>
         )}
@@ -166,6 +166,10 @@ function BotCard({ bot }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={status.qr} alt={`QR WhatsApp ${bot.label}`} className="compta-qr-img" />
         </div>
+      ) : null}
+
+      {!status.loading && !status.connected && status.connecting && !qrMode ? (
+        <p className="muted">Reconnexion automatique en cours — le bot reste actif en permanence.</p>
       ) : null}
 
       {!status.loading && !status.connected && !showQr ? (

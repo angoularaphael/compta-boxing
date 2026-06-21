@@ -18,7 +18,7 @@ export default function AppShell({ user, children }) {
       <aside className="sidebar desktop-sidebar">
         <div className="sidebar-brand">
           <div className="sidebar-brand-inner">
-            <Image src="/logo.svg" alt="Boxing Center" width={140} height={39} className="brand-logo" priority />
+            <Image src="/logo.png" alt="Boxing Center" width={140} height={36} className="brand-logo" priority />
             <small className="brand-role">Compta Boxing</small>
           </div>
         </div>

@@ -62,7 +62,8 @@ let qrError = null;
 let linkRequested = false;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 6;
+const MAX_QR_RECONNECT_ATTEMPTS = 12;
+const SESSION_WATCHDOG_MS = 45000;
 const socketLogger = pino({ level: 'silent' });
 const lidPhoneCache = new Map();
 
@@ -720,9 +721,18 @@ function isQrExpiredError(error) {
   return msg.includes('qr') && (msg.includes('expir') || msg.includes('timeout'));
 }
 
+function isPersistentSessionReconnect(clearAuth = false) {
+  return hasRegisteredSession() && !clearAuth;
+}
+
+function isConnectingState() {
+  return !isConnected && (isLinking || reconnectTimer !== null);
+}
+
 function scheduleReconnect(delayMs, { clearAuth = false } = {}) {
   cancelReconnect();
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+  const persistent = isPersistentSessionReconnect(clearAuth);
+  if (!persistent && reconnectAttempts >= MAX_QR_RECONNECT_ATTEMPTS) {
     isLinking = false;
     if (linkRequested) {
       qrError = 'Trop de tentatives. Cliquez sur Fermer puis Générer le QR.';
@@ -731,6 +741,9 @@ function scheduleReconnect(delayMs, { clearAuth = false } = {}) {
   }
   reconnectAttempts += 1;
   isLinking = true;
+  const backoffMs = persistent
+    ? Math.min(delayMs * Math.min(reconnectAttempts, 8), 60000)
+    : delayMs;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectToWhatsApp({
@@ -738,7 +751,7 @@ function scheduleReconnect(delayMs, { clearAuth = false } = {}) {
       clearAuth,
       silent: !linkRequested,
     }).catch((err) => logger.error({ err }, 'reconnexion échouée'));
-  }, delayMs);
+  }, backoffMs);
 }
 
 function clearAuthSession() {
@@ -798,6 +811,8 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
       browser: ['Compta Boxing', 'Chrome', '120.0.0.0'],
       qrTimeout: 60000,
       connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
+      defaultQueryTimeoutMs: 60000,
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -887,7 +902,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     connected: isConnected,
-    connecting: linkRequested && isLinking && !isConnected,
+    connecting: isConnectingState() && (linkRequested || hasRegisteredSession()),
     location: LOCATION_SLUG,
     name: LOCATION_NAME,
     allowedPhones: getAllAllowedPhones().length,
@@ -897,7 +912,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     connected: isConnected,
-    connecting: (linkRequested || isLinking) && !isConnected,
+    connecting: isConnectingState() && (linkRequested || hasRegisteredSession()),
     linkRequested,
     qr: linkRequested ? currentQrBase64 : null,
     qrError: linkRequested ? qrError : null,
@@ -990,8 +1005,20 @@ app.post('/api/notify', async (req, res) => {
   }
 });
 
+function startSessionWatchdog() {
+  setInterval(() => {
+    if (!hasRegisteredSession() || isConnected || isLinking || reconnectTimer) return;
+    logger.info({ LOCATION_SLUG }, 'watchdog: reconnexion session enregistrée');
+    reconnectAttempts = 0;
+    connectToWhatsApp({ silent: true, force: true, clearAuth: false }).catch((err) =>
+      logger.error({ err }, 'watchdog reconnexion échouée')
+    );
+  }, SESSION_WATCHDOG_MS);
+}
+
 app.listen(PORT, () => {
   logger.info({ PORT, LOCATION_SLUG, dataDir: DATA_DIR }, 'compta-boxing-bot démarré');
+  startSessionWatchdog();
   setTimeout(() => {
     if (hasRegisteredSession()) {
       connectToWhatsApp({ silent: true, force: true, clearAuth: false }).catch(
