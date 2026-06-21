@@ -65,10 +65,14 @@ export async function GET(request) {
       transactions = txs || [];
     }
 
-    const { unmatchedTx, unmatchedInvoices } = listUnmatched(transactions, invoices || []);
+    const billableInvoices = (invoices || []).filter(
+      (inv) => inv.ocr_status === 'ok' || inv.ocr_status === 'partial'
+    );
+
+    const { unmatchedTx, unmatchedInvoices } = listUnmatched(transactions, billableInvoices);
 
     const invoiceBuffers = [];
-    for (const inv of invoices || []) {
+    for (const inv of billableInvoices) {
       try {
         const buf = await downloadFile(BUCKET_INVOICES, inv.storage_path);
         invoiceBuffers.push(buf);
@@ -81,7 +85,7 @@ export async function GET(request) {
     const recap = await buildRecapPdf({
       locationName: LOCATION_LABELS[locationSlug] || location.name,
       accountingMonth: month,
-      invoices: invoices || [],
+      invoices: billableInvoices,
       unmatchedTx,
       unmatchedInvoices,
     });

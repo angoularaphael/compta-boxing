@@ -10,6 +10,9 @@
     "app/api/invoices/[id]/route.js": {
       "maxDuration": 60
     },
+    "app/api/invoices/[id]/reanalyze/route.js": {
+      "maxDuration": 60
+    },
     "app/api/webhook/whatsapp/route.js": {
       "maxDuration": 60
     },
