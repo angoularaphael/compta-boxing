@@ -2,6 +2,29 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '../../../../lib/api-auth';
 import { apiError } from '../../../../lib/apiJson';
 import { getSupabase } from '../../../../lib/supabase';
+import { BUCKET_INVOICES, downloadFile } from '../../../../lib/storage';
+
+export async function GET(request, { params }) {
+  try {
+    await requireSession();
+    const sb = getSupabase();
+    const { data: inv, error } = await sb.from('invoices').select('*').eq('id', params.id).maybeSingle();
+    if (error) throw error;
+    if (!inv) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 });
+
+    const buffer = await downloadFile(BUCKET_INVOICES, inv.storage_path);
+    const safeName = String(inv.file_name || 'facture').replace(/["\r\n]/g, '_');
+    return new NextResponse(buffer, {
+      headers: {
+        'Content-Type': inv.mime_type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  } catch (err) {
+    return apiError(err);
+  }
+}
 
 export async function PATCH(request, { params }) {
   try {
@@ -28,8 +51,22 @@ export async function DELETE(request, { params }) {
   try {
     await requireSession();
     const sb = getSupabase();
+    const { data: inv, error: fetchErr } = await sb
+      .from('invoices')
+      .select('id, storage_path')
+      .eq('id', params.id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!inv) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 });
+
     const { error } = await sb.from('invoices').delete().eq('id', params.id);
     if (error) throw error;
+
+    if (inv.storage_path) {
+      const { error: storageErr } = await sb.storage.from(BUCKET_INVOICES).remove([inv.storage_path]);
+      if (storageErr) console.warn('[invoice delete] storage remove', inv.storage_path, storageErr);
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     return apiError(err);

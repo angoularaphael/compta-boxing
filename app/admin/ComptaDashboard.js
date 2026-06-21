@@ -35,7 +35,56 @@ export default function ComptaDashboard() {
   const [invoiceCount, setInvoiceCount] = useState(0);
   const [hasStatement, setHasStatement] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState(null);
   const [message, setMessage] = useState('');
+
+  function canDownloadInvoice(inv) {
+    return inv.ocr_status === 'ok' || inv.ocr_status === 'partial';
+  }
+
+  function canDeleteInvoice(inv) {
+    return inv.ocr_status === 'failed';
+  }
+
+  async function downloadInvoice(inv) {
+    setRowBusyId(inv.id);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}`);
+      if (!res.ok) {
+        const data = await parseApiJson(res);
+        throw new Error(data.error || 'Téléchargement impossible');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = inv.file_name || 'facture';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function deleteInvoice(inv) {
+    if (!window.confirm(`Supprimer « ${inv.file_name} » ?`)) return;
+    setRowBusyId(inv.id);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}`, { method: 'DELETE' });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error);
+      setMessage('Facture supprimée.');
+      await load();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,12 +233,13 @@ export default function ComptaDashboard() {
                 <th>Montant</th>
                 <th>Analyse</th>
                 <th>Fichier</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     Aucune facture pour l&apos;instant. Le client peut en envoyer sur WhatsApp.
                   </td>
                 </tr>
@@ -202,6 +252,33 @@ export default function ComptaDashboard() {
                   <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
                   <td>{OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}</td>
                   <td>{inv.file_name}</td>
+                  <td>
+                    <div className="table-row-actions">
+                      {canDownloadInvoice(inv) ? (
+                        <ActionButton
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => downloadInvoice(inv)}
+                          loading={rowBusyId === inv.id}
+                        >
+                          Télécharger
+                        </ActionButton>
+                      ) : null}
+                      {canDeleteInvoice(inv) ? (
+                        <ActionButton
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => deleteInvoice(inv)}
+                          loading={rowBusyId === inv.id}
+                        >
+                          Supprimer
+                        </ActionButton>
+                      ) : null}
+                      {!canDownloadInvoice(inv) && !canDeleteInvoice(inv) ? (
+                        <span className="muted">—</span>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1566,6 +1566,12 @@ th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; colo
   font-size: 0.82rem;
 }
 
+.table-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 /* Filters */
 .filter-panel { padding: 1.15rem 1.25rem; }
 

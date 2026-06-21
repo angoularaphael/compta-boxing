@@ -65,6 +65,11 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let sessionEstablished = false;
 let presenceTimer = null;
+let sessionReconnectFailures = 0;
+let pairingCloseFailures = 0;
+let userStartRequested = false;
+const MAX_SESSION_RECONNECT_FAILURES = 8;
+const MAX_PAIRING_CLOSE_FAILURES = 4;
 const MAX_QR_RECONNECT_ATTEMPTS = 12;
 const SESSION_WATCHDOG_MS = 15000;
 const PRESENCE_KEEPALIVE_MS = 180000;
@@ -741,10 +746,18 @@ function shouldReconnectAfterClose() {
   return linkRequested || sessionEstablished || hasRegisteredSession();
 }
 
-function reconnectDelayForCode(statusCode) {
+function reconnectDelayForCode(statusCode, { pairing = false } = {}) {
+  if (pairing) {
+    if (statusCode === DisconnectReason.restartRequired) return 500;
+    if (statusCode === DisconnectReason.connectionClosed) return 1000;
+    if (statusCode === DisconnectReason.timedOut) return 1500;
+    if (statusCode === DisconnectReason.connectionLost) return 1500;
+    return 2000;
+  }
   if (statusCode === DisconnectReason.restartRequired) return 1500;
   if (statusCode === DisconnectReason.timedOut) return 2000;
   if (statusCode === DisconnectReason.connectionLost) return 2500;
+  if (statusCode === DisconnectReason.connectionClosed) return 3000;
   return 5000;
 }
 
@@ -913,6 +926,9 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
         isLinking = false;
         linkRequested = false;
         sessionEstablished = true;
+        sessionReconnectFailures = 0;
+        pairingCloseFailures = 0;
+        userStartRequested = false;
         currentQrBase64 = null;
         qrError = null;
         reconnectAttempts = 0;
@@ -934,6 +950,7 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
           isLinking = false;
           linkRequested = false;
           sessionEstablished = false;
+          sessionReconnectFailures = 0;
           currentQrBase64 = null;
           clearAuthSession();
           return;
@@ -943,11 +960,50 @@ async function connectToWhatsApp({ force = false, clearAuth = false, silent = fa
           scheduleReconnect(3000, { clearAuth: true });
           return;
         }
+        if (
+          linkRequested &&
+          statusCode === DisconnectReason.connectionClosed &&
+          hasRegisteredSession()
+        ) {
+          pairingCloseFailures += 1;
+          if (pairingCloseFailures >= MAX_PAIRING_CLOSE_FAILURES) {
+            logger.warn({ LOCATION_SLUG }, 'pairing bloqué — effacement auth pour nouveau QR');
+            pairingCloseFailures = 0;
+            currentQrBase64 = null;
+            scheduleReconnect(1500, { clearAuth: true });
+            return;
+          }
+        }
+        if (!linkRequested && hasRegisteredSession()) {
+          sessionReconnectFailures += 1;
+          if (sessionReconnectFailures >= MAX_SESSION_RECONNECT_FAILURES) {
+            logger.warn(
+              { LOCATION_SLUG, failures: sessionReconnectFailures },
+              'session invalide — effacement auth'
+            );
+            isLinking = false;
+            sessionEstablished = false;
+            sessionReconnectFailures = 0;
+            clearAuthSession();
+            if (userStartRequested) {
+              linkRequested = true;
+              scheduleReconnect(2000, { clearAuth: false });
+            }
+            return;
+          }
+        }
+        if (linkRequested && reconnectAttempts >= MAX_QR_RECONNECT_ATTEMPTS) {
+          isLinking = false;
+          qrError =
+            'Connexion interrompue trop souvent. Cliquez Fermer puis Générer le QR (ou Nouveau QR).';
+          currentQrBase64 = null;
+          return;
+        }
         if (shouldReconnectAfterClose()) {
-          const delay =
-            linkRequested && statusCode === DisconnectReason.restartRequired
-              ? 500
-              : reconnectDelayForCode(statusCode);
+          const pairing =
+            linkRequested ||
+            (userStartRequested && statusCode === DisconnectReason.restartRequired);
+          const delay = reconnectDelayForCode(statusCode, { pairing });
           scheduleReconnect(delay, { clearAuth: false });
           return;
         }
@@ -973,6 +1029,8 @@ async function stopLinking() {
   cancelReconnect();
   reconnectAttempts = 0;
   linkRequested = false;
+  userStartRequested = false;
+  pairingCloseFailures = 0;
   currentQrBase64 = null;
   qrError = null;
   if (isConnected && sock) {
@@ -1018,18 +1076,49 @@ app.get('/api/qr', (req, res) => {
 
 app.post('/api/start', (req, res) => {
   if (isConnected) return res.json({ success: true, message: 'Already connected' });
+  if (isLinking && (linkRequested || userStartRequested)) {
+    return res.json({
+      success: true,
+      message: linkRequested
+        ? 'QR déjà en cours — scannez ou attendez'
+        : 'Reconnexion déjà en cours',
+      linking: true,
+    });
+  }
   cancelReconnect();
   reconnectAttempts = 0;
-  linkRequested = true;
+  sessionReconnectFailures = 0;
+  pairingCloseFailures = 0;
+  userStartRequested = true;
   const forceQr = Boolean(req.body?.forceQr);
   const hasSession = hasRegisteredSession() && !forceQr;
-  res.json({
-    success: true,
-    message: hasSession ? 'Reconnexion en cours' : 'Génération du QR en cours',
-  });
+
+  if (hasSession) {
+    linkRequested = false;
+    res.json({ success: true, message: 'Reconnexion en cours' });
+    connectToWhatsApp({
+      force: true,
+      clearAuth: false,
+      silent: true,
+    }).catch((err) => {
+      logger.error({ err }, '/api/start reconnect failed');
+      if (userStartRequested && !isConnected) {
+        linkRequested = true;
+        scheduleReconnect(3000, { clearAuth: true });
+      } else {
+        isLinking = false;
+        userStartRequested = false;
+      }
+    });
+    return;
+  }
+
+  linkRequested = true;
+  res.json({ success: true, message: 'Génération du QR en cours' });
   connectToWhatsApp({
     force: true,
-    clearAuth: forceQr || !hasRegisteredSession(),
+    clearAuth: true,
+    silent: false,
   }).catch((err) => {
     qrError = err.message || 'Erreur de connexion.';
     logger.error({ err }, '/api/start failed');
@@ -1037,6 +1126,7 @@ app.post('/api/start', (req, res) => {
       scheduleReconnect(3000, { clearAuth: false });
     } else {
       isLinking = false;
+      userStartRequested = false;
     }
   });
 });
@@ -1054,6 +1144,7 @@ app.post('/api/logout', async (req, res) => {
   cancelReconnect();
   reconnectAttempts = 0;
   linkRequested = false;
+  userStartRequested = false;
   isLinking = false;
   sessionEstablished = false;
   stopPresenceKeepalive();
