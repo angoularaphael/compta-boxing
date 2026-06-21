@@ -14,10 +14,10 @@ export default function WelcomeSplash({ phase }) {
       <div className="welcome-splash__content">
         <div className="welcome-splash__logo-wrap">
           <Image
-            src="/logo.svg"
+            src="/logo.png"
             alt="Boxing Center"
             width={220}
-            height={62}
+            height={56}
             className="welcome-splash__logo"
             priority
           />

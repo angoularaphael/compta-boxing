@@ -114,6 +114,34 @@
   font-size: 1rem;
 }
 
+.ik-landing-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ik-landing-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  text-align: center;
+}
+
+.ik-landing-footer {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.ik-landing-footer a {
+  color: var(--muted);
+}
+
+.ik-landing-footer a:hover {
+  color: var(--accent);
+}
+
 .password-input-wrap {
   position: relative;
   display: flex;

@@ -40,7 +40,7 @@ export default function LoginPage() {
       <div className="ik-login-bg" aria-hidden="true" />
       <div className="ik-login-shell">
         <aside className="ik-login-brand">
-          <Image src="/logo.svg" alt="Boxing Center" width={220} height={62} className="ik-login-logo" priority />
+          <Image src="/logo.png" alt="Boxing Center" width={220} height={56} className="ik-login-logo" priority />
           <h1>Compta Boxing</h1>
           <p>Factures d&apos;achat — 3 salles</p>
           <ul className="ik-login-features">
@@ -81,6 +81,11 @@ export default function LoginPage() {
               {loading ? 'Connexion…' : 'Se connecter'}
             </ActionButton>
           </form>
+          <p className="ik-landing-footer">
+            <a href="https://boxingcenter.fr/" target="_blank" rel="noreferrer">
+              boxingcenter.fr
+            </a>
+          </p>
         </div>
       </div>
     </div>
