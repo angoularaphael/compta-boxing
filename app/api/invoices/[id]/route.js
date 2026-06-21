@@ -2,25 +2,45 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '../../../../lib/api-auth';
 import { apiError } from '../../../../lib/apiJson';
 import { getSupabase } from '../../../../lib/supabase';
-import { BUCKET_INVOICES, downloadFile } from '../../../../lib/storage';
+import { BUCKET_INVOICES, downloadFile, getSignedDownloadUrl } from '../../../../lib/storage';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(request, { params }) {
   try {
     await requireSession();
+    const id = params?.id;
+    if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 });
+
     const sb = getSupabase();
-    const { data: inv, error } = await sb.from('invoices').select('*').eq('id', params.id).maybeSingle();
+    const { data: inv, error } = await sb.from('invoices').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
     if (!inv) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 });
 
-    const buffer = await downloadFile(BUCKET_INVOICES, inv.storage_path);
-    const safeName = String(inv.file_name || 'facture').replace(/["\r\n]/g, '_');
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': inv.mime_type || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
-        'Cache-Control': 'private, no-store',
-      },
-    });
+    const fileName = String(inv.file_name || 'facture.pdf');
+    const { searchParams } = new URL(request.url);
+    const wantsJson = searchParams.get('signed') === '1';
+
+    try {
+      const signedUrl = await getSignedDownloadUrl(BUCKET_INVOICES, inv.storage_path, fileName, 300);
+      if (wantsJson) {
+        return NextResponse.json({ url: signedUrl, fileName });
+      }
+      return NextResponse.redirect(signedUrl, 302);
+    } catch (signedErr) {
+      console.warn('[invoice download] signed url failed, fallback proxy', signedErr);
+      const buffer = await downloadFile(BUCKET_INVOICES, inv.storage_path);
+      const asciiName =
+        fileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\r\n]/g, '_') || 'facture.pdf';
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          'Content-Type': inv.mime_type || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
   } catch (err) {
     return apiError(err);
   }
