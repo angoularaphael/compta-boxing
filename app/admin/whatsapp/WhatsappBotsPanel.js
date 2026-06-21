@@ -19,7 +19,7 @@ function BotCard({ bot }) {
     try {
       const res = await fetch(`/api/bots/${bot.slug}`, {
         cache: 'no-store',
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(35000),
       });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
@@ -32,7 +32,7 @@ function BotCard({ bot }) {
     } catch (err) {
       setStatus({
         loading: false,
-        error: String(err.message || err).includes('abort')
+        error: String(err.message || err).match(/abort|timed out|timeout/i)
           ? 'Délai dépassé — réessayez Actualiser.'
           : (err.message || 'Erreur'),
         connected: false,
@@ -61,7 +61,7 @@ function BotCard({ bot }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: 'qr', forceQr }),
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(35000),
         });
         const data = await parseApiJson(res);
         if (!res.ok) {
@@ -103,7 +103,7 @@ function BotCard({ bot }) {
       try {
         await fetch(`/api/bots/${bot.slug}?action=stop`, {
           method: 'POST',
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(35000),
         });
       } catch {
         /* ignore */
@@ -126,7 +126,7 @@ function BotCard({ bot }) {
       try {
         await fetch(`/api/bots/${bot.slug}?action=logout`, {
           method: 'POST',
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(35000),
         });
       } catch {
         /* ignore */
