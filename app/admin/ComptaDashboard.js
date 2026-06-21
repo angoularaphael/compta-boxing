@@ -3,7 +3,10 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import ActionButton from '../components/ActionButton';
-import { LOCATION_LABELS, LOCATION_SLUGS, currentAccountingMonth } from '../../lib/locations';
+import ComptaFiltersCard from '../components/ComptaFiltersCard';
+import { useComptaFilters } from '../hooks/useComptaFilters';
+import { LOCATION_LABELS } from '../../lib/locations';
+import { monthLabel } from '../../lib/compta-filters';
 import { parseApiJson } from '../../lib/apiJson';
 import { formatDateTimeFr } from '../../lib/datetime-fr';
 
@@ -15,8 +18,19 @@ const OCR_LABELS = {
 };
 
 export default function ComptaDashboard() {
-  const [location, setLocation] = useState(LOCATION_SLUGS[0]);
-  const [month, setMonth] = useState(currentAccountingMonth());
+  const {
+    appliedLocation: location,
+    appliedMonth: month,
+    draftLocation,
+    setDraftLocation,
+    draftMonth,
+    setDraftMonth,
+    draftYear,
+    setDraftYear,
+    applyFilters,
+    filterError,
+    filtersDirty,
+  } = useComptaFilters();
   const [invoices, setInvoices] = useState([]);
   const [invoiceCount, setInvoiceCount] = useState(0);
   const [hasStatement, setHasStatement] = useState(false);
@@ -100,7 +114,7 @@ export default function ComptaDashboard() {
       <div className="ik-generator-hero">
         <div>
           <p className="ik-generator-eyebrow">Compta Boxing</p>
-          <h1>{LOCATION_LABELS[location]} — {month}</h1>
+          <h1>{LOCATION_LABELS[location]} — {monthLabel(month)}</h1>
           <p className="ik-generator-lead">{invoiceCount} facture(s) ce mois-ci</p>
         </div>
       </div>
@@ -122,22 +136,19 @@ export default function ComptaDashboard() {
         </ol>
       </div>
 
-      <div className="card">
-        <div className="form-row" style={{ marginBottom: 0 }}>
-          <div className="form-field">
-            <label>Quelle salle ?</label>
-            <select value={location} onChange={(e) => setLocation(e.target.value)} disabled={loading}>
-              {LOCATION_SLUGS.map((slug) => (
-                <option key={slug} value={slug}>{LOCATION_LABELS[slug]}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-field">
-            <label>Quel mois ?</label>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={loading} />
-          </div>
-        </div>
-      </div>
+      <ComptaFiltersCard
+        draftLocation={draftLocation}
+        setDraftLocation={setDraftLocation}
+        draftMonth={draftMonth}
+        setDraftMonth={setDraftMonth}
+        draftYear={draftYear}
+        setDraftYear={setDraftYear}
+        onApply={applyFilters}
+        loading={loading}
+        filterError={filterError}
+        filtersDirty={filtersDirty}
+        appliedLabel={`${LOCATION_LABELS[location]} — ${monthLabel(month)}`}
+      />
 
       {message ? <p className="form-hint">{message}</p> : null}
 

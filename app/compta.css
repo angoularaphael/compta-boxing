@@ -179,3 +179,31 @@
   color: #9a3412;
   font-size: 0.85rem;
 }
+
+.compta-filters-row {
+  align-items: flex-end;
+}
+
+.compta-filter-year input {
+  min-width: 6rem;
+}
+
+.compta-filter-ok .btn {
+  width: 100%;
+  min-width: 5rem;
+}
+
+.form-hint--error {
+  color: var(--err, #b91c1c);
+}
+
+@media (max-width: 767px) {
+  .compta-filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .compta-filter-ok .btn {
+    width: 100%;
+  }
+}

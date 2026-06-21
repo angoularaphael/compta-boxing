@@ -2,12 +2,26 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import ActionButton from '../../components/ActionButton';
-import { LOCATION_LABELS, LOCATION_SLUGS, currentAccountingMonth } from '../../../lib/locations';
+import ComptaFiltersCard from '../../components/ComptaFiltersCard';
+import { useComptaFilters } from '../../hooks/useComptaFilters';
+import { LOCATION_LABELS } from '../../../lib/locations';
+import { monthLabel } from '../../../lib/compta-filters';
 import { parseApiJson } from '../../../lib/apiJson';
 
 export default function MatchPanel() {
-  const [location, setLocation] = useState(LOCATION_SLUGS[0]);
-  const [month, setMonth] = useState(currentAccountingMonth());
+  const {
+    appliedLocation: location,
+    appliedMonth: month,
+    draftLocation,
+    setDraftLocation,
+    draftMonth,
+    setDraftMonth,
+    draftYear,
+    setDraftYear,
+    applyFilters,
+    filterError,
+    filtersDirty,
+  } = useComptaFilters();
   const [unmatchedTx, setUnmatchedTx] = useState([]);
   const [unmatchedInvoices, setUnmatchedInvoices] = useState([]);
   const [selectedTx, setSelectedTx] = useState(null);
@@ -92,7 +106,7 @@ export default function MatchPanel() {
           <p className="ik-generator-eyebrow">Fin de mois</p>
           <h1>Vérifier le mois</h1>
           <p className="ik-generator-lead">
-            On compare le relevé bancaire avec les factures reçues — pour voir ce qui manque.
+            {LOCATION_LABELS[location]} — {monthLabel(month)} — on compare le relevé bancaire avec les factures reçues.
           </p>
         </div>
       </div>
@@ -106,21 +120,21 @@ export default function MatchPanel() {
         </ol>
       </div>
 
+      <ComptaFiltersCard
+        draftLocation={draftLocation}
+        setDraftLocation={setDraftLocation}
+        draftMonth={draftMonth}
+        setDraftMonth={setDraftMonth}
+        draftYear={draftYear}
+        setDraftYear={setDraftYear}
+        onApply={applyFilters}
+        loading={loading}
+        filterError={filterError}
+        filtersDirty={filtersDirty}
+        appliedLabel={`${LOCATION_LABELS[location]} — ${monthLabel(month)}`}
+      />
+
       <div className="card">
-        <div className="form-row" style={{ marginBottom: '0.75rem' }}>
-          <div className="form-field">
-            <label>Salle</label>
-            <select value={location} onChange={(e) => setLocation(e.target.value)} disabled={loading}>
-              {LOCATION_SLUGS.map((slug) => (
-                <option key={slug} value={slug}>{LOCATION_LABELS[slug]}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-field">
-            <label>Mois</label>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={loading} />
-          </div>
-        </div>
         <label className="muted">Étape 1 — Importer le relevé bancaire (PDF)</label>
         <input className="compta-file-input" type="file" accept="application/pdf,.csv" onChange={uploadStatement} disabled={loading} />
       </div>
