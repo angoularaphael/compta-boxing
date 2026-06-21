@@ -1572,6 +1572,10 @@ th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; colo
   gap: 0.4rem;
 }
 
+tr.row-duplicate td {
+  background: #fffbeb;
+}
+
 /* Filters */
 .filter-panel { padding: 1.15rem 1.25rem; }
 

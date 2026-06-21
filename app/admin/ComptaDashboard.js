@@ -15,6 +15,7 @@ const OCR_LABELS = {
   ok: 'OK',
   partial: 'Partiel',
   failed: 'Échec',
+  duplicate: 'Doublon',
 };
 
 export default function ComptaDashboard() {
@@ -46,6 +47,10 @@ export default function ComptaDashboard() {
     return inv.ocr_status !== 'pending';
   }
 
+  function canReanalyzeInvoice(inv) {
+    return inv.ocr_status === 'failed' || inv.ocr_status === 'partial';
+  }
+
   async function downloadInvoice(inv) {
     setRowBusyId(inv.id);
     setMessage('');
@@ -62,6 +67,26 @@ export default function ComptaDashboard() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function reanalyzeInvoice(inv) {
+    setRowBusyId(inv.id);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}/reanalyze`, { method: 'POST' });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error);
+      setMessage(
+        data.invoice?.ocr_status === 'duplicate'
+          ? 'Doublon détecté — même numéro de facture.'
+          : 'Analyse relancée.'
+      );
+      await load();
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -164,7 +189,12 @@ export default function ComptaDashboard() {
         <div>
           <p className="ik-generator-eyebrow">Compta Boxing</p>
           <h1>{LOCATION_LABELS[location]} — {monthLabel(month)}</h1>
-          <p className="ik-generator-lead">{invoiceCount} facture(s) ce mois-ci</p>
+          <p className="ik-generator-lead">
+            {invoiceCount} facture(s) ce mois-ci
+            {invoices.some((i) => i.ocr_status === 'duplicate')
+              ? ` — ${invoices.filter((i) => i.ocr_status === 'duplicate').length} doublon(s)`
+              : ''}
+          </p>
         </div>
       </div>
 
@@ -228,6 +258,7 @@ export default function ComptaDashboard() {
             <thead>
               <tr>
                 <th>Reçu le</th>
+                <th>N° facture</th>
                 <th>Date facture</th>
                 <th>Fournisseur</th>
                 <th>Montant</th>
@@ -239,18 +270,26 @@ export default function ComptaDashboard() {
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted">
+                  <td colSpan={8} className="muted">
                     Aucune facture pour l&apos;instant. Le client peut en envoyer sur WhatsApp.
                   </td>
                 </tr>
               )}
               {invoices.map((inv) => (
-                <tr key={inv.id}>
+                <tr key={inv.id} className={inv.ocr_status === 'duplicate' ? 'row-duplicate' : undefined}>
                   <td>{formatDateTimeFr(inv.created_at)}</td>
+                  <td>{inv.invoice_number || '—'}</td>
                   <td>{inv.invoice_date || '—'}</td>
                   <td>{inv.vendor_name || '—'}</td>
                   <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
-                  <td>{OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}</td>
+                  <td>
+                    {OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}
+                    {inv.ocr_status === 'duplicate' ? (
+                      <span className="muted" style={{ display: 'block', fontSize: '0.8rem' }}>
+                        Même numéro qu&apos;une facture déjà reçue
+                      </span>
+                    ) : null}
+                  </td>
                   <td>{inv.file_name}</td>
                   <td>
                     <div className="table-row-actions">
@@ -264,6 +303,16 @@ export default function ComptaDashboard() {
                           Télécharger
                         </ActionButton>
                       ) : null}
+                      {canReanalyzeInvoice(inv) ? (
+                        <ActionButton
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => reanalyzeInvoice(inv)}
+                          loading={rowBusyId === inv.id}
+                        >
+                          Réanalyser
+                        </ActionButton>
+                      ) : null}
                       {canDeleteInvoice(inv) ? (
                         <ActionButton
                           type="button"
@@ -274,7 +323,7 @@ export default function ComptaDashboard() {
                           Supprimer
                         </ActionButton>
                       ) : null}
-                      {!canDownloadInvoice(inv) && !canDeleteInvoice(inv) ? (
+                      {!canDownloadInvoice(inv) && !canDeleteInvoice(inv) && !canReanalyzeInvoice(inv) ? (
                         <span className="muted">—</span>
                       ) : null}
                     </div>
