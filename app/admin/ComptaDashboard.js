@@ -43,25 +43,25 @@ export default function ComptaDashboard() {
   }
 
   function canDeleteInvoice(inv) {
-    return inv.ocr_status === 'failed';
+    return inv.ocr_status !== 'pending';
   }
 
   async function downloadInvoice(inv) {
     setRowBusyId(inv.id);
     setMessage('');
     try {
-      const res = await fetch(`/api/invoices/${inv.id}`);
-      if (!res.ok) {
-        const data = await parseApiJson(res);
-        throw new Error(data.error || 'Téléchargement impossible');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const res = await fetch(`/api/invoices/${inv.id}?signed=1`, { cache: 'no-store' });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'Téléchargement impossible');
+      if (!data.url) throw new Error('Lien de téléchargement indisponible');
+
       const a = document.createElement('a');
-      a.href = url;
-      a.download = inv.file_name || 'facture';
+      a.href = data.url;
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
       setMessage(err.message);
     } finally {
