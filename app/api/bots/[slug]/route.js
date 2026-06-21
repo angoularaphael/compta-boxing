@@ -43,7 +43,8 @@ export async function POST(request, { params }) {
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
 
     const botUrl = botUrlFromLocation(location);
-    const result = await fetchBotAction(botUrl, action);
+    const body = await request.json().catch(() => ({}));
+    const result = await fetchBotAction(botUrl, action, body);
     return NextResponse.json({ slug, ...result });
   } catch (err) {
     return apiError(err);
