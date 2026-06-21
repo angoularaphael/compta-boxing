@@ -24,6 +24,8 @@ export default function MatchPanel() {
   } = useComptaFilters();
   const [unmatchedTx, setUnmatchedTx] = useState([]);
   const [unmatchedInvoices, setUnmatchedInvoices] = useState([]);
+  const [totals, setTotals] = useState(null);
+  const [hasStatement, setHasStatement] = useState(false);
   const [selectedTx, setSelectedTx] = useState(null);
   const [selectedInv, setSelectedInv] = useState(null);
   const [message, setMessage] = useState('');
@@ -37,6 +39,8 @@ export default function MatchPanel() {
       if (!res.ok) throw new Error(data.error);
       setUnmatchedTx(data.unmatchedTx || []);
       setUnmatchedInvoices(data.unmatchedInvoices || []);
+      setTotals(data.totals || null);
+      setHasStatement(Boolean(data.hasStatement));
       setSelectedTx(null);
       setSelectedInv(null);
     } catch (err) {
@@ -140,6 +144,32 @@ export default function MatchPanel() {
       </div>
 
       {message ? <p className="form-hint">{message}</p> : null}
+
+      {totals?.statementLines > 0 ? (
+        <div className="compta-stats">
+          <div className="compta-stat">
+            <span>Total dépenses (relevé)</span>
+            <strong>{totals.totalExpenses.toFixed(2)} €</strong>
+            <span className="muted">{totals.statementLines} ligne(s)</span>
+          </div>
+          <div className="compta-stat">
+            <span>Sans facture</span>
+            <strong>{totals.unmatchedExpenses.toFixed(2)} €</strong>
+            <span className="muted">{unmatchedTx.length} ligne(s)</span>
+          </div>
+          <div className="compta-stat">
+            <span>Déjà reliées</span>
+            <strong>{totals.matchedExpenses.toFixed(2)} €</strong>
+          </div>
+          <div className="compta-stat">
+            <span>Factures non reliées</span>
+            <strong>{totals.unmatchedInvoices.toFixed(2)} €</strong>
+            <span className="muted">{unmatchedInvoices.length} facture(s)</span>
+          </div>
+        </div>
+      ) : hasStatement ? null : (
+        <p className="form-hint">Importez le relevé bancaire pour voir le total des dépenses du mois.</p>
+      )}
 
       <div className="form-row">
         <ActionButton className="btn btn-secondary" onClick={load} loading={loading}>Actualiser</ActionButton>

@@ -73,11 +73,20 @@
   margin-top: 0.15rem;
 }
 
-.compta-stat span {
+.compta-stat > span:first-of-type {
   font-size: 0.8rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.compta-stat span.muted {
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .compta-upload-grid {
