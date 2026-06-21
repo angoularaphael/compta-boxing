@@ -44,10 +44,23 @@ export async function GET(request) {
     const unmatchedTx = txs.filter((t) => !t.matched_invoice_id);
     const unmatchedInvoices = invs.filter((i) => !matchedIds.has(i.id));
 
+    const sumAmounts = (rows) =>
+      rows.reduce((sum, row) => sum + Math.abs(Number(row.amount ?? row.amount_ttc) || 0), 0);
+
+    const totals = {
+      statementLines: txs.length,
+      totalExpenses: Math.round(sumAmounts(txs) * 100) / 100,
+      unmatchedExpenses: Math.round(sumAmounts(unmatchedTx) * 100) / 100,
+      matchedExpenses: Math.round(sumAmounts(txs.filter((t) => t.matched_invoice_id)) * 100) / 100,
+      unmatchedInvoices: Math.round(sumAmounts(unmatchedInvoices) * 100) / 100,
+    };
+
     return NextResponse.json({
       unmatchedTx,
       unmatchedInvoices,
       aliases: aliases || [],
+      totals,
+      hasStatement: Boolean(statement),
     });
   } catch (err) {
     return apiError(err);
