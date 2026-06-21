@@ -3,7 +3,7 @@ import { requireSession } from '../../../lib/api-auth';
 import { apiError } from '../../../lib/apiJson';
 import { getSupabase } from '../../../lib/supabase';
 import { parseAccountingMonth } from '../../../lib/locations';
-import { ingestInvoiceFile, applyInvoiceOcr } from '../../../lib/invoices';
+import { ingestInvoiceFile, applyInvoiceOcr, reconcileDuplicatesInMonth } from '../../../lib/invoices';
 import { waitUntil } from '@vercel/functions';
 
 export const maxDuration = 60;
@@ -22,6 +22,8 @@ export async function GET(request) {
     const sb = getSupabase();
     const { data: location } = await sb.from('locations').select('id').eq('slug', locationSlug).maybeSingle();
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
+
+    await reconcileDuplicatesInMonth(sb, location.id, month);
 
     const { data, error } = await sb
       .from('invoices')
