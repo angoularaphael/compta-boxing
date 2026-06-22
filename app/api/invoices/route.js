@@ -3,7 +3,12 @@ import { requireSession } from '../../../lib/api-auth';
 import { apiError } from '../../../lib/apiJson';
 import { getSupabase } from '../../../lib/supabase';
 import { parseAccountingMonth } from '../../../lib/locations';
-import { ingestInvoiceFile, applyInvoiceOcr, reconcileDuplicatesInMonth } from '../../../lib/invoices';
+import {
+  ingestInvoiceFile,
+  applyInvoiceOcr,
+  reconcileDuplicatesInMonth,
+  invoicesForMonthQuery,
+} from '../../../lib/invoices';
 import { waitUntil } from '@vercel/functions';
 
 export const maxDuration = 60;
@@ -25,11 +30,7 @@ export async function GET(request) {
 
     await reconcileDuplicatesInMonth(sb, location.id, month);
 
-    const { data, error } = await sb
-      .from('invoices')
-      .select('*')
-      .eq('location_id', location.id)
-      .eq('accounting_month', month)
+    const { data, error } = await invoicesForMonthQuery(sb, location.id, month)
       .order('invoice_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 

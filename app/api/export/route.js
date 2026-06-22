@@ -5,6 +5,7 @@ import { apiError } from '../../../lib/apiJson';
 import { getSupabase } from '../../../lib/supabase';
 import { parseAccountingMonth, LOCATION_LABELS } from '../../../lib/locations';
 import { listUnmatched } from '../../../lib/match';
+import { invoicesForMonthQuery } from '../../../lib/invoices';
 import { buildRecapPdf } from '../../../lib/export-pdf';
 import {
   BUCKET_EXPORTS,
@@ -72,12 +73,11 @@ export async function GET(request) {
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
 
     const [{ data: invoices }, { data: statement }] = await Promise.all([
-      sb
-        .from('invoices')
-        .select('*')
-        .eq('location_id', location.id)
-        .eq('accounting_month', month)
-        .not('ocr_status', 'in', '("duplicate","failed","pending")'),
+      invoicesForMonthQuery(sb, location.id, month).not(
+        'ocr_status',
+        'in',
+        '("duplicate","failed","pending")'
+      ),
       sb
         .from('bank_statements')
         .select('*')

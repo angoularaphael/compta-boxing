@@ -139,3 +139,42 @@ export async function POST(request) {
     return apiError(err);
   }
 }
+
+export async function DELETE(request) {
+  try {
+    await requireSession();
+    const { searchParams } = new URL(request.url);
+    const locationSlug = searchParams.get('location');
+    const month = parseAccountingMonth(searchParams.get('month'));
+    if (!locationSlug || !month) {
+      return NextResponse.json({ error: 'location et month requis' }, { status: 400 });
+    }
+
+    const sb = getSupabase();
+    const { data: location } = await sb.from('locations').select('id').eq('slug', locationSlug).maybeSingle();
+    if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
+
+    const { data: statement, error: fetchErr } = await sb
+      .from('bank_statements')
+      .select('id, storage_path')
+      .eq('location_id', location.id)
+      .eq('accounting_month', month)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!statement) return NextResponse.json({ error: 'Aucun relevé pour ce mois' }, { status: 404 });
+
+    const { error } = await sb.from('bank_statements').delete().eq('id', statement.id);
+    if (error) throw error;
+
+    if (statement.storage_path) {
+      const { error: storageErr } = await sb.storage
+        .from(BUCKET_STATEMENTS)
+        .remove([statement.storage_path]);
+      if (storageErr) console.warn('[statement delete] storage remove', statement.storage_path, storageErr);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return apiError(err);
+  }
+}

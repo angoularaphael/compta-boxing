@@ -88,6 +88,26 @@ export default function MatchPanel() {
     }
   }
 
+  async function deleteStatement() {
+    if (!statement) return;
+    if (!window.confirm(`Supprimer le relevé « ${statement.file_name} » ? Les liaisons avec les factures seront effacées.`)) {
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/statements?location=${location}&month=${month}`, { method: 'DELETE' });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error);
+      setMessage('Relevé supprimé — vous pouvez en importer un nouveau.');
+      await load();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function uploadStatement(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -202,9 +222,14 @@ export default function MatchPanel() {
             <br />
             Importé le {formatDateTimeFr(statement.imported_at)} — {totals?.statementLines || 0} ligne(s) de dépense
           </p>
-          <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={downloadStatement}>
-            Télécharger le relevé
-          </ActionButton>
+          <div className="table-row-actions">
+            <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={downloadStatement} loading={loading}>
+              Télécharger le relevé
+            </ActionButton>
+            <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={deleteStatement} loading={loading}>
+              Supprimer
+            </ActionButton>
+          </div>
         </div>
       ) : (
         <p className="form-hint">Aucun relevé pour {monthLabel(month)}. Importez le PDF ci-dessus.</p>
