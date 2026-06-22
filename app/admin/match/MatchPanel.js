@@ -7,6 +7,7 @@ import { useComptaFilters } from '../../hooks/useComptaFilters';
 import { LOCATION_LABELS } from '../../../lib/locations';
 import { monthLabel } from '../../../lib/compta-filters';
 import { parseApiJson } from '../../../lib/apiJson';
+import { formatDateTimeFr } from '../../../lib/datetime-fr';
 
 export default function MatchPanel() {
   const {
@@ -19,38 +20,73 @@ export default function MatchPanel() {
     draftYear,
     setDraftYear,
     applyFilters,
+    jumpToMonth,
     filterError,
     filtersDirty,
   } = useComptaFilters();
   const [unmatchedTx, setUnmatchedTx] = useState([]);
   const [unmatchedInvoices, setUnmatchedInvoices] = useState([]);
   const [totals, setTotals] = useState(null);
-  const [hasStatement, setHasStatement] = useState(false);
+  const [statement, setStatement] = useState(null);
   const [selectedTx, setSelectedTx] = useState(null);
   const [selectedInv, setSelectedInv] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/api/match?location=${location}&month=${month}`);
-      const data = await parseApiJson(res);
-      if (!res.ok) throw new Error(data.error);
+      const [matchRes, stRes] = await Promise.all([
+        fetch(`/api/match?location=${location}&month=${month}`, { cache: 'no-store' }),
+        fetch(`/api/statements?location=${location}&month=${month}`, { cache: 'no-store' }),
+      ]);
+      const data = await parseApiJson(matchRes);
+      const stData = await parseApiJson(stRes);
+      if (!matchRes.ok) throw new Error(data.error);
       setUnmatchedTx(data.unmatchedTx || []);
       setUnmatchedInvoices(data.unmatchedInvoices || []);
       setTotals(data.totals || null);
-      setHasStatement(Boolean(data.hasStatement));
-      setSelectedTx(null);
-      setSelectedInv(null);
+      setStatement(stData.statement || null);
+      if (!silent) {
+        setSelectedTx(null);
+        setSelectedInv(null);
+      }
     } catch (err) {
-      setMessage(err.message);
+      if (!silent) setMessage(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [location, month]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      load({ silent: true });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function downloadStatement() {
+    try {
+      const res = await fetch(`/api/statements?location=${location}&month=${month}&signed=1`, {
+        cache: 'no-store',
+      });
+      const data = await parseApiJson(res);
+      if (!res.ok || !data.downloadUrl) throw new Error(data.error || 'Téléchargement impossible');
+      const a = document.createElement('a');
+      a.href = data.downloadUrl;
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
 
   async function uploadStatement(e) {
     const file = e.target.files?.[0];
@@ -64,12 +100,21 @@ export default function MatchPanel() {
       const res = await fetch('/api/statements', { method: 'POST', body: fd });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
-      setMessage(`Relevé importé — ${data.transactions} ligne(s) trouvée(s).`);
-      await load();
+
+      if (data.accountingMonth && data.accountingMonth !== month) {
+        jumpToMonth(data.accountingMonth);
+      }
+
+      const targetMonth = data.accountingMonth || month;
+      setMessage(
+        data.monthWarning ||
+          `Relevé importé — ${data.transactions} ligne(s) de dépense trouvée(s) pour ${monthLabel(targetMonth)}.`
+      );
+
       await fetch('/api/match', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationSlug: location, month }),
+        body: JSON.stringify({ locationSlug: location, month: targetMonth }),
       });
       await load();
     } catch (err) {
@@ -118,7 +163,10 @@ export default function MatchPanel() {
       <div className="card compta-guide">
         <h3 style={{ marginTop: 0 }}>Comment faire ?</h3>
         <ol className="compta-steps compta-steps--big">
-          <li><strong>Importer le relevé bancaire</strong> (PDF de la banque) ci-dessous</li>
+          <li>
+            <strong>Choisissez le bon mois</strong> dans le filtre ci-dessous (ex. mai si vous importez le relevé de mai)
+          </li>
+          <li><strong>Importer le relevé bancaire</strong> (PDF de la banque)</li>
           <li>L&apos;app montre les <strong>dépenses sans facture</strong> et les <strong>factures sans dépense</strong></li>
           <li>Si tu sais que deux lignes vont ensemble : clique l&apos;une puis l&apos;autre → <strong>C&apos;est la même</strong></li>
         </ol>
@@ -140,8 +188,27 @@ export default function MatchPanel() {
 
       <div className="card">
         <label className="muted">Étape 1 — Importer le relevé bancaire (PDF)</label>
+        <p className="muted" style={{ fontSize: '0.85rem', margin: '0.35rem 0 0.75rem' }}>
+          Le relevé est enregistré pour le mois affiché dans le filtre ({monthLabel(month)}). Mise à jour auto toutes les 5 s.
+        </p>
         <input className="compta-file-input" type="file" accept="application/pdf,.csv" onChange={uploadStatement} disabled={loading} />
       </div>
+
+      {statement ? (
+        <div className="card statement-card">
+          <h3 style={{ marginTop: 0 }}>Relevé enregistré</h3>
+          <p className="muted" style={{ marginBottom: '0.5rem' }}>
+            <strong>{statement.file_name}</strong>
+            <br />
+            Importé le {formatDateTimeFr(statement.imported_at)} — {totals?.statementLines || 0} ligne(s) de dépense
+          </p>
+          <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={downloadStatement}>
+            Télécharger le relevé
+          </ActionButton>
+        </div>
+      ) : (
+        <p className="form-hint">Aucun relevé pour {monthLabel(month)}. Importez le PDF ci-dessus.</p>
+      )}
 
       {message ? <p className="form-hint">{message}</p> : null}
 
@@ -167,12 +234,12 @@ export default function MatchPanel() {
             <span className="muted">{unmatchedInvoices.length} facture(s)</span>
           </div>
         </div>
-      ) : hasStatement ? null : (
-        <p className="form-hint">Importez le relevé bancaire pour voir le total des dépenses du mois.</p>
-      )}
+      ) : null}
 
       <div className="form-row">
-        <ActionButton className="btn btn-secondary" onClick={load} loading={loading}>Actualiser</ActionButton>
+        <ActionButton className="btn btn-secondary" onClick={() => load()} loading={loading}>
+          Actualiser
+        </ActionButton>
         <ActionButton className="btn" onClick={linkManual} loading={loading} disabled={!selectedTx || !selectedInv}>
           C&apos;est la même dépense
         </ActionButton>
@@ -183,7 +250,11 @@ export default function MatchPanel() {
           <h3 style={{ marginTop: 0 }}>Dépenses sur le relevé sans facture ({unmatchedTx.length})</h3>
           <p className="muted">Argent sorti du compte — pas encore de facture trouvée.</p>
           <div className="match-list">
-            {unmatchedTx.length === 0 && <p className="muted" style={{ padding: '0.75rem' }}>Rien ici — parfait ou pas encore de relevé importé.</p>}
+            {unmatchedTx.length === 0 && (
+              <p className="muted" style={{ padding: '0.75rem' }}>
+                {statement ? 'Rien ici — toutes les dépenses ont une facture ou le relevé est vide.' : 'Importez le relevé bancaire.'}
+              </p>
+            )}
             {unmatchedTx.map((tx) => (
               <div
                 key={tx.id}

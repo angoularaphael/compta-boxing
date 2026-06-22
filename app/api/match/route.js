@@ -31,7 +31,8 @@ export async function GET(request) {
         .from('invoices')
         .select('*')
         .eq('location_id', location.id)
-        .eq('accounting_month', month),
+        .eq('accounting_month', month)
+        .not('ocr_status', 'in', '("duplicate","failed","pending")'),
       statement
         ? sb.from('bank_transactions').select('*').eq('statement_id', statement.id)
         : Promise.resolve({ data: [] }),
@@ -61,6 +62,7 @@ export async function GET(request) {
       aliases: aliases || [],
       totals,
       hasStatement: Boolean(statement),
+      statementMonth: month,
     });
   } catch (err) {
     return apiError(err);
@@ -120,7 +122,12 @@ export async function PUT(request) {
     }
 
     const [{ data: invoices }, { data: transactions }, { data: aliases }] = await Promise.all([
-      sb.from('invoices').select('*').eq('location_id', location.id).eq('accounting_month', accountingMonth),
+      sb
+        .from('invoices')
+        .select('*')
+        .eq('location_id', location.id)
+        .eq('accounting_month', accountingMonth)
+        .not('ocr_status', 'in', '("duplicate","failed","pending")'),
       sb.from('bank_transactions').select('*').eq('statement_id', statement.id),
       sb.from('vendor_aliases').select('*').or(`location_id.is.null,location_id.eq.${location.id}`),
     ]);

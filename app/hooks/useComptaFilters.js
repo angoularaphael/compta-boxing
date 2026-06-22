@@ -29,6 +29,22 @@ export function useComptaFilters() {
     return true;
   }, [draftLocation, draftMonth, draftYear]);
 
+  const jumpToMonth = useCallback(
+    (ym) => {
+      const built = buildAccountingMonth(splitAccountingMonth(ym).year, splitAccountingMonth(ym).month);
+      if (!built) return false;
+      const { year, month: m } = splitAccountingMonth(built);
+      setDraftYear(year);
+      setDraftMonth(m);
+      const next = { location: applied.location, month: built };
+      setApplied(next);
+      writeStoredComptaFilters(next);
+      setFilterError('');
+      return true;
+    },
+    [applied.location]
+  );
+
   const filtersDirty =
     draftLocation !== applied.location ||
     buildAccountingMonth(draftYear, draftMonth) !== applied.month;
@@ -43,6 +59,7 @@ export function useComptaFilters() {
     draftYear,
     setDraftYear,
     applyFilters,
+    jumpToMonth,
     filterError,
     filtersDirty,
   };

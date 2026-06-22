@@ -247,7 +247,9 @@ export default function ComptaDashboard() {
         </div>
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Télécharger pour le comptable</h3>
-          <p className="muted">Un ZIP avec toutes les factures du mois + le récapitulatif.</p>
+          <p className="muted">
+            Un ZIP avec le relevé bancaire, le récapitulatif, et un dossier <strong>factures/</strong> (une par fichier, de la plus récente à la plus ancienne).
+          </p>
           <ActionButton className="btn" onClick={exportMonth} loading={loading}>
             Télécharger le dossier du mois
           </ActionButton>
