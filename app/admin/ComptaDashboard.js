@@ -248,7 +248,7 @@ export default function ComptaDashboard() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Télécharger pour le comptable</h3>
           <p className="muted">
-            Un seul PDF : récapitulatif du mois puis toutes les factures fusionnées, classées de la plus ancienne à la plus récente.
+            Un seul PDF : toutes les factures fusionnées comme un merge iLovePDF, classées de la plus ancienne à la plus récente.
           </p>
           <ActionButton className="btn" onClick={exportMonth} loading={loading}>
             Télécharger le PDF du mois
