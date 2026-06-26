@@ -180,10 +180,10 @@ export default function ComptaDashboard() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `compta-${location}-${month}.zip`;
+      a.download = `compta-${location}-${month}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-      setMessage('Dossier téléchargé — envoyez-le à votre comptable.');
+      setMessage('PDF téléchargé — envoyez-le à votre comptable.');
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -218,7 +218,7 @@ export default function ComptaDashboard() {
             <Link href="/admin/match">page Vérifier le mois</Link>)
           </li>
           <li>
-            <strong>Envoyer au comptable</strong> — bouton ci-dessous pour télécharger le dossier ZIP
+            <strong>Envoyer au comptable</strong> — bouton ci-dessous pour télécharger le PDF du mois
           </li>
         </ol>
       </div>
@@ -248,10 +248,10 @@ export default function ComptaDashboard() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Télécharger pour le comptable</h3>
           <p className="muted">
-            Un ZIP avec le relevé bancaire, le récapitulatif, et un dossier <strong>factures/</strong> (une par fichier, de la plus récente à la plus ancienne).
+            Un seul PDF : récapitulatif du mois puis toutes les factures fusionnées, classées de la plus ancienne à la plus récente.
           </p>
           <ActionButton className="btn" onClick={exportMonth} loading={loading}>
-            Télécharger le dossier du mois
+            Télécharger le PDF du mois
           </ActionButton>
         </div>
       </div>
