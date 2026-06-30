@@ -25,6 +25,49 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('fr-FR');
 }
 
+function SectionHeading({ label, color = 'var(--accent)' }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      margin: '1.75rem 0 1rem',
+      paddingBottom: '0.55rem',
+      borderBottom: '1px solid var(--border)',
+    }}>
+      <span style={{
+        display: 'inline-block',
+        width: 3,
+        height: 16,
+        borderRadius: 2,
+        background: color,
+        flexShrink: 0,
+      }} />
+      <span style={{
+        fontSize: '0.78rem',
+        fontWeight: 700,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        color: '#334155',
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function FormField({ label, required, children }) {
+  return (
+    <div className="form-field">
+      <label>
+        {label}
+        {required && <span style={{ color: 'var(--err)', marginLeft: 3 }}>*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
 export default function DocumentsPage() {
   const [tab, setTab] = useState('nouveau');
   const [documents, setDocuments] = useState([]);
@@ -85,7 +128,7 @@ export default function DocumentsPage() {
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
 
-      setMessage(`${data.document.type === 'devis' ? 'Devis' : 'Facture'} ${data.document.numero} créé(e)`);
+      setMessage(`${data.document.type === 'devis' ? 'Devis' : 'Facture'} ${data.document.numero} créé(e) avec succès`);
       setMsgType('ok');
 
       window.open(`/api/documents/${data.document.id}/pdf`, '_blank');
@@ -109,185 +152,273 @@ export default function DocumentsPage() {
     }
   }
 
+  const isDevis = form.type === 'devis';
+  const typeAccent = isDevis ? '#2563eb' : '#16a34a';
+
   return (
-    <div className="page-content">
-      <div className="page-header">
-        <h1>Devis & Factures</h1>
-        <p className="page-desc">Générez des devis et factures PDF pour vos clients.</p>
+    <div className="main" style={{ maxWidth: 880 }}>
+
+      {/* En-tête */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '1.45rem', fontWeight: 800, margin: 0, color: 'var(--navy)', letterSpacing: '-0.02em' }}>
+          Devis &amp; Factures
+        </h1>
+        <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)', fontSize: '0.88rem' }}>
+          Générez des documents PDF professionnels pour vos clients.
+        </p>
       </div>
 
-      <div className="tab-bar" style={{ marginBottom: 24 }}>
+      {/* Tabs */}
+      <div className="mode-tabs" style={{ marginBottom: '1.5rem' }}>
         <button
-          className={`tab-btn ${tab === 'nouveau' ? 'active' : ''}`}
+          className={tab === 'nouveau' ? 'active' : ''}
           onClick={() => setTab('nouveau')}
         >
           Nouveau document
         </button>
         <button
-          className={`tab-btn ${tab === 'historique' ? 'active' : ''}`}
+          className={tab === 'historique' ? 'active' : ''}
           onClick={() => setTab('historique')}
         >
           Historique
         </button>
       </div>
 
+      {/* Message feedback */}
       {message && (
-        <p className={`form-msg ${msgType}`} style={{ marginBottom: 16 }}>
+        <div style={{
+          marginBottom: '1.25rem',
+          padding: '0.75rem 1rem',
+          borderRadius: '8px',
+          fontSize: '0.88rem',
+          fontWeight: 500,
+          background: msgType === 'ok' ? 'var(--ok-bg)' : 'var(--err-bg)',
+          color: msgType === 'ok' ? 'var(--ok)' : 'var(--err)',
+          border: `1px solid ${msgType === 'ok' ? '#86efac' : '#fca5a5'}`,
+        }}>
           {message}
-        </p>
+        </div>
       )}
 
+      {/* ─── TAB : Nouveau document ─── */}
       {tab === 'nouveau' && (
-        <form onSubmit={handleSubmit} className="card" style={{ padding: 24 }}>
-          <div className="form-grid-2">
-            <div>
-              <label>Type de document *</label>
-              <select value={form.type} onChange={(e) => setField('type', e.target.value)}>
-                {TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label>Société émettrice *</label>
-              <select value={form.societe} onChange={(e) => setField('societe', e.target.value)}>
-                {SOCIETE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+        <form onSubmit={handleSubmit}>
+
+          {/* Paramètres */}
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
+            <SectionHeading label="Paramètres du document" color="var(--accent)" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <FormField label="Type de document" required>
+                <select
+                  value={form.type}
+                  onChange={(e) => setField('type', e.target.value)}
+                  style={{
+                    fontWeight: 600,
+                    color: isDevis ? '#1d4ed8' : '#15803d',
+                    borderColor: isDevis ? '#93c5fd' : '#86efac',
+                    background: isDevis ? '#eff6ff' : '#f0fdf4',
+                  }}
+                >
+                  {TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Société émettrice" required>
+                <select value={form.societe} onChange={(e) => setField('societe', e.target.value)}>
+                  {SOCIETE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </FormField>
             </div>
           </div>
 
-          <h3 style={{ margin: '24px 0 12px', fontSize: 14, color: 'var(--navy)' }}>
-            Informations client
-          </h3>
-          <div className="form-grid-2">
-            <div>
-              <label>Nom du client *</label>
-              <input
-                value={form.client_nom}
-                onChange={(e) => setField('client_nom', e.target.value)}
+          {/* Client */}
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
+            <SectionHeading label="Informations client" color="#7c3aed" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <FormField label="Nom du client" required>
+                <input
+                  value={form.client_nom}
+                  onChange={(e) => setField('client_nom', e.target.value)}
+                  required
+                  placeholder="Nom ou raison sociale"
+                />
+              </FormField>
+              <FormField label="Email">
+                <input
+                  type="email"
+                  value={form.client_email}
+                  onChange={(e) => setField('client_email', e.target.value)}
+                  placeholder="client@email.com"
+                />
+              </FormField>
+              <FormField label="Adresse">
+                <input
+                  value={form.client_adresse}
+                  onChange={(e) => setField('client_adresse', e.target.value)}
+                  placeholder="Adresse complète"
+                />
+              </FormField>
+              <FormField label="Téléphone">
+                <input
+                  value={form.client_telephone}
+                  onChange={(e) => setField('client_telephone', e.target.value)}
+                  placeholder="06 XX XX XX XX"
+                />
+              </FormField>
+            </div>
+          </div>
+
+          {/* Prestation */}
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
+            <SectionHeading label="Prestation &amp; montant" color="#16a34a" />
+            <FormField label="Descriptif de la prestation" required>
+              <textarea
+                value={form.prestation}
+                onChange={(e) => setField('prestation', e.target.value)}
                 required
-                placeholder="Nom ou raison sociale"
+                rows={4}
+                placeholder="Description détaillée de la prestation…"
+                style={{ resize: 'vertical' }}
               />
-            </div>
-            <div>
-              <label>Email</label>
-              <input
-                type="email"
-                value={form.client_email}
-                onChange={(e) => setField('client_email', e.target.value)}
-                placeholder="client@email.com"
-              />
-            </div>
-            <div>
-              <label>Adresse</label>
-              <input
-                value={form.client_adresse}
-                onChange={(e) => setField('client_adresse', e.target.value)}
-                placeholder="Adresse complète"
-              />
-            </div>
-            <div>
-              <label>Téléphone</label>
-              <input
-                value={form.client_telephone}
-                onChange={(e) => setField('client_telephone', e.target.value)}
-                placeholder="06 XX XX XX XX"
-              />
-            </div>
-          </div>
-
-          <h3 style={{ margin: '24px 0 12px', fontSize: 14, color: 'var(--navy)' }}>
-            Prestation
-          </h3>
-          <div>
-            <label>Descriptif de la prestation *</label>
-            <textarea
-              value={form.prestation}
-              onChange={(e) => setField('prestation', e.target.value)}
-              required
-              rows={3}
-              placeholder="Description détaillée de la prestation..."
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </div>
-          <div className="form-grid-2" style={{ marginTop: 12 }}>
-            <div>
-              <label>Montant TTC (€) *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={form.montant}
-                onChange={(e) => setField('montant', e.target.value)}
-                required
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label>Date du document</label>
-              <input
-                type="date"
-                value={form.date_document}
-                onChange={(e) => setField('date_document', e.target.value)}
-              />
-            </div>
-            <div>
-              <label>Référence</label>
-              <input
-                value={form.reference}
-                onChange={(e) => setField('reference', e.target.value)}
-                placeholder="REF-001 (optionnel)"
-              />
-            </div>
-            <div>
-              <label>Conditions</label>
-              <input
-                value={form.conditions}
-                onChange={(e) => setField('conditions', e.target.value)}
-                placeholder="Paiement à 30 jours (optionnel)"
-              />
+            </FormField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.25rem' }}>
+              <FormField label="Montant TTC (€)" required>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={form.montant}
+                    onChange={(e) => setField('montant', e.target.value)}
+                    required
+                    placeholder="0.00"
+                    style={{ paddingLeft: '2.25rem', fontWeight: 600 }}
+                  />
+                  <span style={{
+                    position: 'absolute',
+                    left: '0.85rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--muted)',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    pointerEvents: 'none',
+                  }}>€</span>
+                </div>
+              </FormField>
+              <FormField label="Date du document">
+                <input
+                  type="date"
+                  value={form.date_document}
+                  onChange={(e) => setField('date_document', e.target.value)}
+                />
+              </FormField>
             </div>
           </div>
 
-          <div style={{ marginTop: 24 }}>
-            <ActionButton type="submit" className="btn btn-primary" loading={loading}>
-              Générer le {form.type === 'devis' ? 'devis' : 'la facture'}
+          {/* Options */}
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+            <SectionHeading label="Options facultatives" color="#b45309" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <FormField label="Référence interne">
+                <input
+                  value={form.reference}
+                  onChange={(e) => setField('reference', e.target.value)}
+                  placeholder="REF-001"
+                />
+              </FormField>
+              <FormField label="Conditions de paiement">
+                <input
+                  value={form.conditions}
+                  onChange={(e) => setField('conditions', e.target.value)}
+                  placeholder="Paiement à 30 jours"
+                />
+              </FormField>
+            </div>
+          </div>
+
+          {/* Soumission */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '1rem',
+            padding: '1rem 1.25rem',
+            borderRadius: '10px',
+            background: `${typeAccent}0c`,
+            border: `1px solid ${typeAccent}28`,
+          }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+              Le PDF s'ouvre automatiquement à la génération.
+            </span>
+            <ActionButton
+              type="submit"
+              className="btn"
+              loading={loading}
+              style={{ background: typeAccent, padding: '0.7rem 1.6rem', fontSize: '0.92rem' }}
+            >
+              Générer le {isDevis ? 'devis' : 'la facture'}
             </ActionButton>
           </div>
         </form>
       )}
 
+      {/* ─── TAB : Historique ─── */}
       {tab === 'historique' && (
-        <div className="card" style={{ padding: 24 }}>
-          <div className="form-grid-2" style={{ marginBottom: 16 }}>
+        <div className="card" style={{ padding: '1.5rem' }}>
+
+          {/* Filtres */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto auto',
+            gap: '0.75rem',
+            marginBottom: '1.25rem',
+            alignItems: 'center',
+          }}>
             <input
               type="search"
               placeholder="Rechercher (client, numéro, prestation)…"
               value={histSearch}
               onChange={(e) => setHistSearch(e.target.value)}
+              style={{ margin: 0 }}
             />
-            <select value={histFilter} onChange={(e) => setHistFilter(e.target.value)}>
+            <select
+              value={histFilter}
+              onChange={(e) => setHistFilter(e.target.value)}
+              style={{ margin: 0, width: 'auto', minWidth: '170px' }}
+            >
               <option value="">Tous les documents</option>
               <option value="devis">Devis uniquement</option>
               <option value="facture">Factures uniquement</option>
             </select>
+            <ActionButton className="btn" onClick={loadDocuments} loading={loading}>
+              Actualiser
+            </ActionButton>
           </div>
 
-          <ActionButton className="btn btn-sm" onClick={loadDocuments} loading={loading}>
-            Actualiser
-          </ActionButton>
-
+          {/* État vide */}
           {documents.length === 0 && !loading && (
-            <p style={{ color: 'var(--muted)', marginTop: 16, textAlign: 'center' }}>
-              Aucun document trouvé.
-            </p>
+            <div style={{
+              textAlign: 'center',
+              padding: '2.5rem 1rem',
+              color: 'var(--muted)',
+              border: '1px dashed var(--border)',
+              borderRadius: '8px',
+            }}>
+              <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>Aucun document trouvé</p>
+              <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>
+                Créez votre premier document via l'onglet « Nouveau document ».
+              </p>
+            </div>
           )}
 
+          {/* Tableau */}
           {documents.length > 0 && (
-            <div style={{ overflowX: 'auto', marginTop: 16 }}>
-              <table className="data-table">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table" style={{ minWidth: 720 }}>
                 <thead>
                   <tr>
                     <th>Numéro</th>
@@ -295,33 +426,74 @@ export default function DocumentsPage() {
                     <th>Société</th>
                     <th>Client</th>
                     <th>Prestation</th>
-                    <th>Montant</th>
+                    <th style={{ textAlign: 'right' }}>Montant</th>
                     <th>Date</th>
-                    <th>Actions</th>
+                    <th style={{ textAlign: 'center' }}>PDF</th>
                   </tr>
                 </thead>
                 <tbody>
                   {documents.map((d) => (
                     <tr key={d.id}>
-                      <td><code style={{ fontSize: 12 }}>{d.numero}</code></td>
                       <td>
-                        <span className={`badge ${d.type === 'devis' ? 'badge-info' : 'badge-success'}`}>
+                        <code style={{
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          padding: '0.2rem 0.4rem',
+                          background: '#f1f5f9',
+                          borderRadius: '4px',
+                          color: '#334155',
+                        }}>
+                          {d.numero}
+                        </code>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '4px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
+                          background: d.type === 'devis' ? '#dbeafe' : '#dcfce7',
+                          color: d.type === 'devis' ? '#1d4ed8' : '#15803d',
+                        }}>
                           {d.type === 'devis' ? 'Devis' : 'Facture'}
                         </span>
                       </td>
-                      <td>{SOCIETE_OPTIONS.find((s) => s.value === d.societe)?.label || d.societe}</td>
-                      <td>{d.client_nom}</td>
-                      <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ fontSize: '0.85rem', color: '#475569' }}>
+                        {SOCIETE_OPTIONS.find((s) => s.value === d.societe)?.label || d.societe}
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{d.client_nom}</td>
+                      <td style={{
+                        maxWidth: 220,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: '0.85rem',
+                        color: '#475569',
+                      }}>
                         {d.prestation}
                       </td>
-                      <td style={{ fontWeight: 600 }}>{formatCurrency(d.montant)}</td>
-                      <td>{formatDate(d.date_document)}</td>
-                      <td>
+                      <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--navy)' }}>
+                        {formatCurrency(d.montant)}
+                      </td>
+                      <td style={{ fontSize: '0.85rem', color: '#475569' }}>
+                        {formatDate(d.date_document)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
                         <a
                           href={`/api/documents/${d.id}/pdf`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="btn btn-sm"
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#334155',
+                            border: '1px solid var(--border)',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                          }}
                         >
                           PDF
                         </a>
