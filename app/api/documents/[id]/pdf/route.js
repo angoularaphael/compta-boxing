@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit';
 import { fetchDocumentById, SOCIETES } from '../../../../../lib/documents.js';
 
@@ -45,11 +47,26 @@ export async function GET(_request, { params }) {
 
   // Header
   pdf.rect(0, 0, PAGE.width, 100).fill(COLORS.navy);
-  pdf.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.white);
-  pdf.text(societe.sigle, MARGIN, 30, { lineBreak: false });
-  pdf.font('Helvetica').fontSize(10).fillColor('#94a3b8');
-  pdf.text(societe.adresse, MARGIN, 58);
-  if (societe.siret) pdf.text(societe.siret, MARGIN, 72);
+
+  // Logo ou texte selon la société
+  const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+  const logoLoaded = societe.sigle === 'BOXING CENTER' && fs.existsSync(logoPath);
+  if (logoLoaded) {
+    // Zone blanche derrière le logo pour la lisibilité
+    pdf.save();
+    pdf.roundedRect(MARGIN - 6, 14, 168, 56, 4).fill(COLORS.white);
+    pdf.image(logoPath, MARGIN - 2, 18, { fit: [158, 48], align: 'center', valign: 'center' });
+    pdf.restore();
+    pdf.font('Helvetica').fontSize(8).fillColor('#94a3b8');
+    pdf.text(societe.adresse, MARGIN, 76, { lineBreak: false });
+    if (societe.siret) pdf.text(`  ·  ${societe.siret}`, MARGIN + pdf.widthOfString(societe.adresse), 76, { lineBreak: false });
+  } else {
+    pdf.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.white);
+    pdf.text(societe.sigle, MARGIN, 30, { lineBreak: false });
+    pdf.font('Helvetica').fontSize(10).fillColor('#94a3b8');
+    pdf.text(societe.adresse, MARGIN, 58);
+    if (societe.siret) pdf.text(societe.siret, MARGIN, 72);
+  }
 
   // Document type + number
   const typeBlockX = PAGE.width - MARGIN - 180;
