@@ -17,4 +17,5 @@ console.log('Testing Groq text (PDF path)...');
 const r1 = await analyzeInvoiceWithGroq(fakePdf, 'application/pdf', 'facture.pdf');
 console.log(JSON.stringify(r1, null, 2));
 
-console.log('\nVision model:', process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct');
+console.log('\nVision model:', process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b');
+console.log('Text model:', process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b');
