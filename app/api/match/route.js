@@ -97,6 +97,26 @@ export async function POST(request) {
   }
 }
 
+/** Supprime une ligne du relevé (une à une). */
+export async function DELETE(request) {
+  try {
+    await requireSession();
+    const body = await request.json().catch(() => ({}));
+    const { searchParams } = new URL(request.url);
+    const transactionId = body.transactionId || searchParams.get('transactionId');
+    if (!transactionId) {
+      return NextResponse.json({ error: 'transactionId requis' }, { status: 400 });
+    }
+
+    const sb = getSupabase();
+    const { error } = await sb.from('bank_transactions').delete().eq('id', transactionId);
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return apiError(err);
+  }
+}
+
 export async function PUT(request) {
   try {
     await requireSession();

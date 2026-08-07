@@ -26,12 +26,14 @@ export default function MatchPanel() {
   } = useComptaFilters();
   const [unmatchedTx, setUnmatchedTx] = useState([]);
   const [unmatchedInvoices, setUnmatchedInvoices] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
   const [totals, setTotals] = useState(null);
   const [statement, setStatement] = useState(null);
   const [selectedTx, setSelectedTx] = useState(null);
   const [selectedInv, setSelectedInv] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState(null);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -47,6 +49,7 @@ export default function MatchPanel() {
       setUnmatchedInvoices(data.unmatchedInvoices || []);
       setTotals(data.totals || null);
       setStatement(stData.statement || null);
+      setAllTransactions(stData.transactions || []);
       if (!silent) {
         setSelectedTx(null);
         setSelectedInv(null);
@@ -108,6 +111,30 @@ export default function MatchPanel() {
     }
   }
 
+  async function deleteTransaction(tx) {
+    if (!window.confirm(`Supprimer cette ligne ?\n${tx.tx_date} — ${Number(tx.amount).toFixed(2)} € — ${tx.label}`)) {
+      return;
+    }
+    setRowBusyId(tx.id);
+    setMessage('');
+    try {
+      const res = await fetch('/api/match', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: tx.id }),
+      });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'Suppression impossible');
+      setMessage('Ligne du relevé supprimée.');
+      if (selectedTx === tx.id) setSelectedTx(null);
+      await load({ silent: true });
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
   async function uploadStatement(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,6 +169,30 @@ export default function MatchPanel() {
     } finally {
       setLoading(false);
       e.target.value = '';
+    }
+  }
+
+  async function runAutoMatch() {
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/match', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationSlug: location, month }),
+      });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error);
+      setMessage(
+        data.applied
+          ? `${data.applied} rapprochement(s) automatique(s).`
+          : 'Aucun nouveau rapprochement automatique.'
+      );
+      await load();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -209,7 +260,8 @@ export default function MatchPanel() {
       <div className="card">
         <label className="muted">Étape 1 — Importer le relevé bancaire (PDF)</label>
         <p className="muted" style={{ fontSize: '0.85rem', margin: '0.35rem 0 0.75rem' }}>
-          Le relevé est enregistré pour le mois affiché dans le filtre ({monthLabel(month)}). Mise à jour auto toutes les 5 s.
+          Toutes les lignes débit sont importées (doublons inclus), jusqu&apos;au solde créditeur.
+          Mise à jour auto toutes les 5 s.
         </p>
         <input className="compta-file-input" type="file" accept="application/pdf,.csv" onChange={uploadStatement} disabled={loading} />
       </div>
@@ -220,14 +272,17 @@ export default function MatchPanel() {
           <p className="muted" style={{ marginBottom: '0.5rem' }}>
             <strong>{statement.file_name}</strong>
             <br />
-            Importé le {formatDateTimeFr(statement.imported_at)} — {totals?.statementLines || 0} ligne(s) de dépense
+            Importé le {formatDateTimeFr(statement.imported_at)} — {totals?.statementLines || allTransactions.length} ligne(s) de dépense
           </p>
           <div className="table-row-actions">
             <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={downloadStatement} loading={loading}>
               Télécharger le relevé
             </ActionButton>
+            <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={runAutoMatch} loading={loading}>
+              Relancer le rapprochement auto
+            </ActionButton>
             <ActionButton type="button" className="btn btn-secondary btn-sm" onClick={deleteStatement} loading={loading}>
-              Supprimer
+              Supprimer le relevé
             </ActionButton>
           </div>
         </div>
@@ -261,6 +316,56 @@ export default function MatchPanel() {
         </div>
       ) : null}
 
+      {allTransactions.length > 0 ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Toutes les lignes du relevé ({allTransactions.length})</h3>
+          <p className="muted" style={{ marginTop: '-0.25rem', fontSize: '0.85rem' }}>
+            Doublons inclus. Supprimez une ligne une à une si besoin.
+          </p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Libellé</th>
+                  <th style={{ textAlign: 'right' }}>Montant</th>
+                  <th>Statut</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allTransactions.map((tx) => (
+                  <tr key={tx.id}>
+                    <td>{tx.tx_date}</td>
+                    <td>{tx.label}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                      {Number(tx.amount).toFixed(2)} €
+                    </td>
+                    <td>
+                      {tx.matched_invoice_id ? (
+                        <span className="ocr-badge ocr-badge--ok">Reliée</span>
+                      ) : (
+                        <span className="ocr-badge ocr-badge--partial">Sans facture</span>
+                      )}
+                    </td>
+                    <td>
+                      <ActionButton
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => deleteTransaction(tx)}
+                        loading={rowBusyId === tx.id}
+                      >
+                        Supprimer
+                      </ActionButton>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
       <div className="form-row">
         <ActionButton className="btn btn-secondary" onClick={() => load()} loading={loading}>
           Actualiser
@@ -273,7 +378,7 @@ export default function MatchPanel() {
       <div className="match-lists">
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Dépenses sur le relevé sans facture ({unmatchedTx.length})</h3>
-          <p className="muted">Argent sorti du compte — pas encore de facture trouvée.</p>
+          <p className="muted">Argent sorti du compte — pas encore de facture trouvée. Cliquez pour lier, ou supprimez.</p>
           <div className="match-list">
             {unmatchedTx.length === 0 && (
               <p className="muted" style={{ padding: '0.75rem' }}>
@@ -286,9 +391,24 @@ export default function MatchPanel() {
                 className={`match-item ${selectedTx === tx.id ? 'selected' : ''}`}
                 onClick={() => setSelectedTx(tx.id)}
               >
-                <strong>{Number(tx.amount).toFixed(2)} €</strong> — {tx.tx_date}
-                <br />
-                <span className="muted">{tx.label}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <div>
+                    <strong>{Number(tx.amount).toFixed(2)} €</strong> — {tx.tx_date}
+                    <br />
+                    <span className="muted">{tx.label}</span>
+                  </div>
+                  <ActionButton
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteTransaction(tx);
+                    }}
+                    loading={rowBusyId === tx.id}
+                  >
+                    Supprimer
+                  </ActionButton>
+                </div>
               </div>
             ))}
           </div>

@@ -1576,6 +1576,81 @@ tr.row-duplicate td {
   background: #fffbeb;
 }
 
+tr.row-partial td {
+  background: #fff7ed;
+}
+
+tr.row-edit td {
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  padding: 0.85rem 1rem;
+}
+
+.field-missing {
+  color: #c2410c;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.ocr-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ocr-badge--ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ocr-badge--partial {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.ocr-badge--failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.ocr-badge--pending {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.ocr-badge--duplicate {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.invoice-edit-panel {
+  max-width: 920px;
+}
+
+.invoice-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.invoice-edit-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  margin: 0;
+}
+
+.invoice-edit-grid input {
+  font-weight: 500;
+  margin: 0;
+}
+
 /* Filters */
 .filter-panel { padding: 1.15rem 1.25rem; }
 

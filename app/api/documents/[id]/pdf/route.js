@@ -5,7 +5,7 @@ import PDFDocument from 'pdfkit';
 import { fetchDocumentById, SOCIETES } from '../../../../../lib/documents.js';
 
 const PAGE = { width: 595.28, height: 841.89 };
-const MARGIN = 50;
+const MARGIN = 40;
 const CONTENT_W = PAGE.width - MARGIN * 2;
 
 const COLORS = {
@@ -54,6 +54,11 @@ function resolveAmounts(doc) {
   };
 }
 
+/** Texte absolu sans faire défiler le flux (évite page 2). */
+function absText(pdf, str, x, y, opts = {}) {
+  pdf.text(String(str ?? ''), x, y, { lineBreak: false, ...opts });
+}
+
 export async function GET(_request, { params }) {
   const { id } = params;
 
@@ -67,13 +72,12 @@ export async function GET(_request, { params }) {
   const title = isDevis ? 'DEVIS' : 'FACTURE';
   const amounts = resolveAmounts(doc);
 
-  const pdf = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true });
+  // margin: 0 + positionnement absolu → une seule page A4
+  const pdf = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, autoFirstPage: true });
   const chunks = [];
   pdf.on('data', (c) => chunks.push(c));
 
-  // Header
-  const hasLegalMeta = Boolean(societe.siren || societe.siret || societe.tva);
-  const headerH = hasLegalMeta || doc.societe === 'distrix' ? 120 : 110;
+  const headerH = 88;
   pdf.rect(0, 0, PAGE.width, headerH).fill(COLORS.navy);
 
   const logoFile = societe.logo || (societe.sigle === 'BOXING CENTER' ? 'logo.png' : null);
@@ -81,131 +85,170 @@ export async function GET(_request, { params }) {
   const logoLoaded = logoPath && fs.existsSync(logoPath) && /\.(png|jpe?g)$/i.test(logoPath);
 
   if (logoLoaded) {
-    const logoW = doc.societe === 'distrix' ? 120 : 168;
-    const logoH = doc.societe === 'distrix' ? 72 : 56;
+    const logoW = doc.societe === 'distrix' ? 70 : 140;
+    const logoH = doc.societe === 'distrix' ? 56 : 48;
     pdf.save();
-    pdf.roundedRect(MARGIN - 6, 12, logoW + 8, logoH + 4, 4).fill(COLORS.white);
-    pdf.image(logoPath, MARGIN - 2, 14, { fit: [logoW, logoH], align: 'center', valign: 'center' });
+    pdf.roundedRect(MARGIN - 4, 10, logoW + 8, logoH + 4, 4).fill(COLORS.white);
+    pdf.image(logoPath, MARGIN, 12, { fit: [logoW, logoH], align: 'center', valign: 'center' });
     pdf.restore();
+    pdf.font('Helvetica').fontSize(7.5).fillColor('#94a3b8');
+    absText(pdf, societe.adresse, MARGIN + logoW + 14, 18);
+    const legalBits = [];
+    if (societe.siren) legalBits.push(`SIREN ${societe.siren}`);
+    if (societe.siret) legalBits.push(`SIRET ${societe.siret}`);
+    if (societe.tva) legalBits.push(`N° TVA ${societe.tva}`);
+    if (legalBits.length) {
+      absText(pdf, legalBits.join('  ·  '), MARGIN + logoW + 14, 32, { width: 220 });
+    }
   } else {
-    pdf.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.white);
-    pdf.text(societe.sigle, MARGIN, 22, { lineBreak: false });
+    pdf.font('Helvetica-Bold').fontSize(18).fillColor(COLORS.white);
+    absText(pdf, societe.sigle, MARGIN, 16);
+    pdf.font('Helvetica').fontSize(8).fillColor('#94a3b8');
+    absText(pdf, societe.adresse, MARGIN, 40);
+    const legalBits = [];
+    if (societe.siren) legalBits.push(`SIREN ${societe.siren}`);
+    if (societe.siret) legalBits.push(`SIRET ${societe.siret}`);
+    if (societe.tva) legalBits.push(`N° TVA ${societe.tva}`);
+    if (legalBits.length) {
+      absText(pdf, legalBits.join('  ·  '), MARGIN, 54, { width: 320 });
+    }
   }
 
-  pdf.font('Helvetica').fontSize(8).fillColor('#94a3b8');
-  let metaY = logoLoaded ? (doc.societe === 'distrix' ? 90 : 76) : 50;
-  pdf.text(societe.adresse, MARGIN, metaY, { lineBreak: false });
-  metaY += 11;
-  const legalBits = [];
-  if (societe.siren) legalBits.push(`SIREN ${societe.siren}`);
-  if (societe.siret) legalBits.push(`SIRET ${societe.siret}`);
-  if (societe.tva) legalBits.push(`N° TVA ${societe.tva}`);
-  if (legalBits.length) {
-    pdf.text(legalBits.join('  ·  '), MARGIN, metaY, { width: 340, lineBreak: false });
-  }
+  const typeBlockX = PAGE.width - MARGIN - 170;
+  pdf.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.accent);
+  absText(pdf, title, typeBlockX, 18, { width: 170, align: 'right' });
+  pdf.font('Helvetica').fontSize(10).fillColor(COLORS.white);
+  absText(pdf, `N° ${doc.numero}`, typeBlockX, 38, { width: 170, align: 'right' });
+  absText(pdf, `Date : ${formatDateFr(doc.date_document)}`, typeBlockX, 54, { width: 170, align: 'right' });
 
-  // Document type + number
-  const typeBlockX = PAGE.width - MARGIN - 180;
-  pdf.font('Helvetica-Bold').fontSize(16).fillColor(COLORS.accent);
-  pdf.text(title, typeBlockX, 28, { width: 180, align: 'right' });
-  pdf.font('Helvetica').fontSize(11).fillColor(COLORS.white);
-  pdf.text(`N° ${doc.numero}`, typeBlockX, 50, { width: 180, align: 'right' });
-  pdf.text(`Date : ${formatDateFr(doc.date_document)}`, typeBlockX, 66, { width: 180, align: 'right' });
+  let y = headerH + 18;
 
-  pdf.y = headerH + 20;
-
-  // Client block
-  pdf.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.muted);
-  pdf.text('DESTINATAIRE', MARGIN, pdf.y);
-  pdf.moveDown(0.4);
-  pdf.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.navy);
-  pdf.text(doc.client_nom, MARGIN, pdf.y);
-  pdf.font('Helvetica').fontSize(10).fillColor(COLORS.navy);
-  if (doc.client_adresse) { pdf.moveDown(0.3); pdf.text(doc.client_adresse); }
-  if (doc.client_email) { pdf.moveDown(0.2); pdf.text(doc.client_email); }
-  if (doc.client_telephone) { pdf.moveDown(0.2); pdf.text(doc.client_telephone); }
-
-  if (doc.reference) {
-    pdf.moveDown(0.5);
-    pdf.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
-    pdf.text(`Référence : ${doc.reference}`);
-  }
-
-  pdf.y = Math.max(pdf.y + 30, 230);
-
-  // Prestation table
-  const tableY = pdf.y;
-  const colDesc = CONTENT_W * 0.7;
-  const colAmount = CONTENT_W * 0.3;
-
-  pdf.rect(MARGIN, tableY, CONTENT_W, 32).fill('#f1f5f9');
-  pdf.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.navy);
-  pdf.text('DESCRIPTION', MARGIN + 12, tableY + 10, { width: colDesc - 24 });
-  pdf.text('MONTANT HT', MARGIN + colDesc + 12, tableY + 10, { width: colAmount - 24, align: 'right' });
-
-  const rowY = tableY + 32;
-  pdf.rect(MARGIN, rowY, CONTENT_W, 0.5).fill(COLORS.border);
-  pdf.font('Helvetica').fontSize(10).fillColor(COLORS.navy);
-
-  const prestHeight = pdf.heightOfString(doc.prestation, { width: colDesc - 24 });
-  const rowH = Math.max(prestHeight + 24, 40);
-
-  pdf.text(doc.prestation, MARGIN + 12, rowY + 12, { width: colDesc - 24 });
+  pdf.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.muted);
+  absText(pdf, 'DESTINATAIRE', MARGIN, y);
+  y += 14;
   pdf.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.navy);
-  pdf.text(formatCurrency(amounts.ht), MARGIN + colDesc + 12, rowY + 12, { width: colAmount - 24, align: 'right' });
+  absText(pdf, doc.client_nom, MARGIN, y);
+  y += 15;
+  pdf.font('Helvetica').fontSize(9).fillColor(COLORS.navy);
+  if (doc.client_adresse) {
+    absText(pdf, doc.client_adresse, MARGIN, y, { width: CONTENT_W * 0.55 });
+    y += 12;
+  }
+  if (doc.client_email) {
+    absText(pdf, doc.client_email, MARGIN, y);
+    y += 12;
+  }
+  if (doc.client_telephone) {
+    absText(pdf, doc.client_telephone, MARGIN, y);
+    y += 12;
+  }
+  if (doc.reference) {
+    pdf.font('Helvetica').fontSize(8).fillColor(COLORS.muted);
+    absText(pdf, `Référence : ${doc.reference}`, MARGIN, y);
+    y += 12;
+  }
 
-  // Totals
+  y += 16;
+
+  const colDesc = CONTENT_W * 0.68;
+  const colAmount = CONTENT_W * 0.32;
+  const tableY = y;
+
+  pdf.rect(MARGIN, tableY, CONTENT_W, 26).fill('#f1f5f9');
+  pdf.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.navy);
+  absText(pdf, 'DESCRIPTION', MARGIN + 10, tableY + 8, { width: colDesc - 20 });
+  absText(pdf, 'MONTANT HT', MARGIN + colDesc + 8, tableY + 8, { width: colAmount - 16, align: 'right' });
+
+  const rowY = tableY + 26;
+  pdf.font('Helvetica').fontSize(9).fillColor(COLORS.navy);
+  const prestHeight = Math.min(
+    pdf.heightOfString(doc.prestation || '', { width: colDesc - 20 }),
+    120
+  );
+  const rowH = Math.max(prestHeight + 18, 36);
+
+  pdf.text(doc.prestation || '', MARGIN + 10, rowY + 8, {
+    width: colDesc - 20,
+    height: rowH - 12,
+    ellipsis: true,
+  });
+  pdf.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.navy);
+  absText(pdf, formatCurrency(amounts.ht), MARGIN + colDesc + 8, rowY + 8, {
+    width: colAmount - 16,
+    align: 'right',
+  });
+
+  let totalY = rowY + rowH + 4;
+  pdf.rect(MARGIN, totalY, CONTENT_W, 0.75).fill(COLORS.border);
+  totalY += 8;
+
   const totalsX = MARGIN + colDesc;
-  let totalY = rowY + rowH;
-  pdf.rect(MARGIN, totalY, CONTENT_W, 1).fill(COLORS.border);
-
-  const drawTotalLine = (label, value, { bold = false, bg = false, size = 10 } = {}) => {
-    if (bg) pdf.rect(totalsX, totalY, colAmount, 22).fill('#f8fafc');
-    pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(bold ? COLORS.navy : COLORS.muted);
-    pdf.text(label, totalsX + 12, totalY + 6, { width: colAmount - 24 });
-    pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(COLORS.navy);
-    pdf.text(formatCurrency(value), totalsX + 12, totalY + 6, { width: colAmount - 24, align: 'right' });
-    totalY += 22;
+  const drawTotalLine = (label, value, { bold = false, bg = false } = {}) => {
+    if (bg) pdf.rect(totalsX, totalY - 2, colAmount, 18).fill('#f8fafc');
+    pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 9).fillColor(bold ? COLORS.navy : COLORS.muted);
+    absText(pdf, label, totalsX + 8, totalY, { width: colAmount - 16 });
+    pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 11 : 9).fillColor(COLORS.navy);
+    absText(pdf, formatCurrency(value), totalsX + 8, totalY, { width: colAmount - 16, align: 'right' });
+    totalY += 18;
   };
 
   drawTotalLine('Total HT', amounts.ht);
   drawTotalLine(`TVA (${amounts.taux} %)`, amounts.tva);
-  drawTotalLine('TOTAL TTC', amounts.ttc, { bold: true, bg: true, size: 12 });
-  totalY += 8;
+  drawTotalLine('TOTAL TTC', amounts.ttc, { bold: true, bg: true });
 
-  pdf.y = totalY + 16;
+  y = totalY + 14;
 
-  // Conditions
   if (doc.conditions) {
-    pdf.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.muted);
-    pdf.text('CONDITIONS', MARGIN, pdf.y);
-    pdf.moveDown(0.3);
-    pdf.font('Helvetica').fontSize(10).fillColor(COLORS.navy);
-    pdf.text(doc.conditions, MARGIN, pdf.y, { width: CONTENT_W });
-    pdf.moveDown(1);
+    pdf.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.muted);
+    absText(pdf, 'CONDITIONS', MARGIN, y);
+    y += 12;
+    pdf.font('Helvetica').fontSize(9).fillColor(COLORS.navy);
+    pdf.text(doc.conditions, MARGIN, y, { width: CONTENT_W, height: 48, ellipsis: true });
+    y += Math.min(pdf.heightOfString(doc.conditions, { width: CONTENT_W }), 48) + 8;
   }
 
   if (isDevis) {
-    pdf.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
-    pdf.text('Ce devis est valable 30 jours à compter de sa date d\'émission.', MARGIN, pdf.y);
-    pdf.moveDown(1);
+    pdf.font('Helvetica').fontSize(8).fillColor(COLORS.muted);
+    absText(pdf, "Ce devis est valable 30 jours à compter de sa date d'émission.", MARGIN, y);
   }
 
-  // Footer
-  const footerY = PAGE.height - 70;
-  pdf.font('Helvetica').fontSize(8).fillColor(COLORS.muted);
-  pdf.text(`${societe.nom} — ${societe.adresse}`, MARGIN, footerY, { width: CONTENT_W, align: 'center' });
+  // Pied de page — forcé sur la 1re page
+  const range = pdf.bufferedPageRange();
+  pdf.switchToPage(range.start);
+  const footerY = PAGE.height - 42;
+  pdf.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted);
+  absText(pdf, `${societe.nom} — ${societe.adresse}`, MARGIN, footerY, {
+    width: CONTENT_W,
+    align: 'center',
+  });
   const footerLegal = [];
   if (societe.siret) footerLegal.push(`SIRET ${societe.siret}`);
   if (societe.tva) footerLegal.push(`N° TVA ${societe.tva}`);
   if (footerLegal.length) {
-    pdf.text(footerLegal.join('  ·  '), MARGIN, footerY + 12, { width: CONTENT_W, align: 'center' });
+    absText(pdf, footerLegal.join('  ·  '), MARGIN, footerY + 12, {
+      width: CONTENT_W,
+      align: 'center',
+    });
   }
 
   pdf.end();
 
   await new Promise((resolve) => pdf.on('end', resolve));
-  const buffer = Buffer.concat(chunks);
+  let buffer = Buffer.concat(chunks);
+
+  // Sécurité : si PDFKit a quand même créé une 2e page vide, on ne garde que la 1re
+  try {
+    const { PDFDocument } = await import('pdf-lib');
+    const src = await PDFDocument.load(buffer);
+    if (src.getPageCount() > 1) {
+      const out = await PDFDocument.create();
+      const [first] = await out.copyPages(src, [0]);
+      out.addPage(first);
+      buffer = Buffer.from(await out.save());
+    }
+  } catch (err) {
+    console.warn('[documents/pdf] trim pages failed', err?.message || err);
+  }
 
   return new NextResponse(buffer, {
     status: 200,

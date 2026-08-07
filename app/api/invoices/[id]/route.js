@@ -52,13 +52,39 @@ export async function PATCH(request, { params }) {
     const { id } = params;
     const body = await request.json();
 
+    const sb = getSupabase();
+    const { data: current, error: fetchErr } = await sb
+      .from('invoices')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!current) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 });
+
     const patch = {};
     if (body.invoice_date !== undefined) patch.invoice_date = body.invoice_date || null;
-    if (body.amount_ttc !== undefined) patch.amount_ttc = body.amount_ttc;
-    if (body.vendor_name !== undefined) patch.vendor_name = body.vendor_name;
+    if (body.amount_ttc !== undefined) {
+      const n = body.amount_ttc === '' || body.amount_ttc == null ? null : Number(body.amount_ttc);
+      patch.amount_ttc = n != null && Number.isFinite(n) ? n : null;
+    }
+    if (body.vendor_name !== undefined) {
+      const v = String(body.vendor_name || '').trim();
+      patch.vendor_name = v || null;
+    }
+    if (body.invoice_number !== undefined) {
+      const n = String(body.invoice_number || '').trim();
+      patch.invoice_number = n || null;
+    }
     if (body.accounting_month !== undefined) patch.accounting_month = body.accounting_month;
 
-    const sb = getSupabase();
+    const merged = { ...current, ...patch };
+    if (current.ocr_status !== 'duplicate') {
+      if (merged.invoice_date && merged.amount_ttc != null) patch.ocr_status = 'ok';
+      else if (merged.invoice_date || merged.amount_ttc != null || merged.vendor_name) {
+        patch.ocr_status = 'partial';
+      }
+    }
+
     const { data, error } = await sb.from('invoices').update(patch).eq('id', id).select('*').single();
     if (error) throw error;
     return NextResponse.json({ invoice: data });

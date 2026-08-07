@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import ActionButton from '../components/ActionButton';
 import ComptaFiltersCard from '../components/ComptaFiltersCard';
 import { useComptaFilters } from '../hooks/useComptaFilters';
@@ -87,6 +87,13 @@ export default function ComptaDashboard() {
   const [message, setMessage] = useState('');
   const [sortBy, setSortBy] = useState('invoice_date');
   const [sortDir, setSortDir] = useState('asc');
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    invoice_date: '',
+    amount_ttc: '',
+    vendor_name: '',
+    invoice_number: '',
+  });
 
   const sortedInvoices = useMemo(
     () => [...invoices].sort((a, b) => compareInvoices(a, b, sortBy, sortDir)),
@@ -102,6 +109,68 @@ export default function ComptaDashboard() {
     }
   }
 
+  function displayVendor(name) {
+    const s = String(name || '').trim();
+    if (!s) return null;
+    const letters = (s.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    if (letters < 3 || letters / s.length < 0.45) return null;
+    return s;
+  }
+
+  function missingFields(inv) {
+    const missing = [];
+    if (!inv.invoice_date) missing.push('date');
+    if (inv.amount_ttc == null) missing.push('montant');
+    if (!displayVendor(inv.vendor_name)) missing.push('fournisseur');
+    return missing;
+  }
+
+  function rowClassName(inv) {
+    if (inv.ocr_status === 'duplicate') return 'row-duplicate';
+    if (inv.ocr_status === 'partial' || inv.ocr_status === 'failed') return 'row-partial';
+    return undefined;
+  }
+
+  function startEdit(inv) {
+    setEditingId(inv.id);
+    setEditForm({
+      invoice_date: inv.invoice_date || '',
+      amount_ttc: inv.amount_ttc != null ? String(inv.amount_ttc) : '',
+      vendor_name: displayVendor(inv.vendor_name) || '',
+      invoice_number: inv.invoice_number || '',
+    });
+  }
+
+  async function saveEdit(inv) {
+    setRowBusyId(inv.id);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_date: editForm.invoice_date || null,
+          amount_ttc: editForm.amount_ttc === '' ? null : editForm.amount_ttc,
+          vendor_name: editForm.vendor_name,
+          invoice_number: editForm.invoice_number,
+        }),
+      });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'Enregistrement impossible');
+      setMessage(
+        data.invoice?.ocr_status === 'ok'
+          ? 'Facture complétée — analyse OK.'
+          : 'Modifications enregistrées.'
+      );
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
   function canDownloadInvoice(inv) {
     return inv.ocr_status === 'ok' || inv.ocr_status === 'partial';
   }
@@ -112,6 +181,10 @@ export default function ComptaDashboard() {
 
   function canReanalyzeInvoice(inv) {
     return inv.ocr_status === 'failed' || inv.ocr_status === 'partial' || inv.ocr_status === 'pending';
+  }
+
+  function canEditInvoice(inv) {
+    return inv.ocr_status === 'partial' || inv.ocr_status === 'failed' || inv.ocr_status === 'ok';
   }
 
   async function downloadInvoice(inv) {
@@ -380,58 +453,180 @@ export default function ComptaDashboard() {
                   </td>
                 </tr>
               )}
-              {sortedInvoices.map((inv) => (
-                <tr key={inv.id} className={inv.ocr_status === 'duplicate' ? 'row-duplicate' : undefined}>
-                  <td>{formatDateTimeFr(inv.created_at)}</td>
-                  <td>{inv.invoice_number || '—'}</td>
-                  <td>{inv.invoice_date || '—'}</td>
-                  <td>{inv.vendor_name || '—'}</td>
-                  <td>{inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}</td>
-                  <td>
-                    {OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}
-                    {inv.ocr_status === 'duplicate' ? (
-                      <span className="muted" style={{ display: 'block', fontSize: '0.8rem' }}>
-                        Même numéro qu&apos;une facture déjà reçue
-                      </span>
+              {sortedInvoices.map((inv) => {
+                const missing = missingFields(inv);
+                const vendor = displayVendor(inv.vendor_name);
+                const isEditing = editingId === inv.id;
+                let fileLabel = String(inv.file_name || '');
+                try {
+                  fileLabel = decodeURIComponent(fileLabel.replace(/\+/g, ' '));
+                } catch {
+                  /* keep raw */
+                }
+                return (
+                  <Fragment key={inv.id}>
+                    <tr className={rowClassName(inv)}>
+                      <td>{formatDateTimeFr(inv.created_at)}</td>
+                      <td>{inv.invoice_number || '—'}</td>
+                      <td>
+                        {inv.invoice_date || (
+                          <span className="field-missing">Manquante</span>
+                        )}
+                      </td>
+                      <td>
+                        {vendor || (
+                          <span className="field-missing">
+                            {inv.ocr_status === 'partial' || inv.ocr_status === 'failed'
+                              ? 'Non détecté'
+                              : '—'}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {inv.amount_ttc != null ? (
+                          `${Number(inv.amount_ttc).toFixed(2)} €`
+                        ) : (
+                          <span className="field-missing">Manquant</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`ocr-badge ocr-badge--${inv.ocr_status || 'unknown'}`}>
+                          {OCR_LABELS[inv.ocr_status] || inv.ocr_status || '—'}
+                        </span>
+                        {inv.ocr_status === 'duplicate' ? (
+                          <span className="muted" style={{ display: 'block', fontSize: '0.8rem' }}>
+                            Même numéro qu&apos;une facture déjà reçue
+                          </span>
+                        ) : null}
+                        {inv.ocr_status === 'partial' && missing.length > 0 ? (
+                          <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: 2 }}>
+                            À compléter : {missing.join(', ')}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }} title={fileLabel}>
+                        {fileLabel}
+                      </td>
+                      <td>
+                        <div className="table-row-actions">
+                          {canDownloadInvoice(inv) ? (
+                            <ActionButton
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => downloadInvoice(inv)}
+                              loading={rowBusyId === inv.id}
+                            >
+                              Télécharger
+                            </ActionButton>
+                          ) : null}
+                          {canEditInvoice(inv) ? (
+                            <ActionButton
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => (isEditing ? setEditingId(null) : startEdit(inv))}
+                            >
+                              {isEditing ? 'Fermer' : 'Compléter'}
+                            </ActionButton>
+                          ) : null}
+                          {canReanalyzeInvoice(inv) ? (
+                            <ActionButton
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => reanalyzeInvoice(inv)}
+                              loading={rowBusyId === inv.id}
+                            >
+                              Réanalyser
+                            </ActionButton>
+                          ) : null}
+                          {canDeleteInvoice(inv) ? (
+                            <ActionButton
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => deleteInvoice(inv)}
+                              loading={rowBusyId === inv.id}
+                            >
+                              Supprimer
+                            </ActionButton>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                    {isEditing ? (
+                      <tr className="row-edit">
+                        <td colSpan={8}>
+                          <div className="invoice-edit-panel">
+                            <p className="muted" style={{ margin: '0 0 0.65rem', fontSize: '0.85rem' }}>
+                              Complétez les champs manquants. Date + montant → statut OK.
+                            </p>
+                            <div className="invoice-edit-grid">
+                              <label>
+                                Date facture
+                                <input
+                                  type="date"
+                                  value={editForm.invoice_date}
+                                  onChange={(e) =>
+                                    setEditForm((f) => ({ ...f, invoice_date: e.target.value }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Montant TTC (€)
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editForm.amount_ttc}
+                                  onChange={(e) =>
+                                    setEditForm((f) => ({ ...f, amount_ttc: e.target.value }))
+                                  }
+                                  placeholder="0.00"
+                                />
+                              </label>
+                              <label>
+                                Fournisseur
+                                <input
+                                  value={editForm.vendor_name}
+                                  onChange={(e) =>
+                                    setEditForm((f) => ({ ...f, vendor_name: e.target.value }))
+                                  }
+                                  placeholder="Nom du fournisseur"
+                                />
+                              </label>
+                              <label>
+                                N° facture
+                                <input
+                                  value={editForm.invoice_number}
+                                  onChange={(e) =>
+                                    setEditForm((f) => ({ ...f, invoice_number: e.target.value }))
+                                  }
+                                  placeholder="optionnel"
+                                />
+                              </label>
+                            </div>
+                            <div className="table-row-actions" style={{ marginTop: '0.75rem' }}>
+                              <ActionButton
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => saveEdit(inv)}
+                                loading={rowBusyId === inv.id}
+                              >
+                                Enregistrer
+                              </ActionButton>
+                              <ActionButton
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setEditingId(null)}
+                              >
+                                Annuler
+                              </ActionButton>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     ) : null}
-                  </td>
-                  <td>{inv.file_name}</td>
-                  <td>
-                    <div className="table-row-actions">
-                      {canDownloadInvoice(inv) ? (
-                        <ActionButton
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => downloadInvoice(inv)}
-                          loading={rowBusyId === inv.id}
-                        >
-                          Télécharger
-                        </ActionButton>
-                      ) : null}
-                      {canReanalyzeInvoice(inv) ? (
-                        <ActionButton
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => reanalyzeInvoice(inv)}
-                          loading={rowBusyId === inv.id}
-                        >
-                          Réanalyser
-                        </ActionButton>
-                      ) : null}
-                      {canDeleteInvoice(inv) ? (
-                        <ActionButton
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => deleteInvoice(inv)}
-                          loading={rowBusyId === inv.id}
-                        >
-                          Supprimer
-                        </ActionButton>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
