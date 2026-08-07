@@ -30,8 +30,19 @@ export async function POST(request) {
     if (!body.prestation?.trim()) {
       return NextResponse.json({ ok: false, error: 'Descriptif prestation requis' }, { status: 400 });
     }
-    if (!body.montant || isNaN(Number(body.montant)) || Number(body.montant) <= 0) {
-      return NextResponse.json({ ok: false, error: 'Montant invalide' }, { status: 400 });
+    const hasHt = body.montant_ht != null && body.montant_ht !== '';
+    const hasTtc = body.montant != null && body.montant !== '';
+    if (!hasHt && !hasTtc) {
+      return NextResponse.json({ ok: false, error: 'Montant HT requis' }, { status: 400 });
+    }
+    if (hasHt && (isNaN(Number(body.montant_ht)) || Number(body.montant_ht) <= 0)) {
+      return NextResponse.json({ ok: false, error: 'Montant HT invalide' }, { status: 400 });
+    }
+    if (body.taux_tva != null && body.taux_tva !== '') {
+      const taux = Number(body.taux_tva);
+      if (isNaN(taux) || taux < 0 || taux > 100) {
+        return NextResponse.json({ ok: false, error: 'Taux de TVA invalide' }, { status: 400 });
+      }
     }
 
     const doc = await createDocument(body);

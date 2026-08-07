@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ActionButton from '../components/ActionButton';
 import ComptaFiltersCard from '../components/ComptaFiltersCard';
 import { useComptaFilters } from '../hooks/useComptaFilters';
@@ -17,6 +17,53 @@ const OCR_LABELS = {
   failed: 'Échec',
   duplicate: 'Doublon',
 };
+
+function SortHeader({ label, active, dir, onClick }) {
+  return (
+    <th>
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          margin: 0,
+          font: 'inherit',
+          fontWeight: 700,
+          color: 'inherit',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+        }}
+        title="Trier"
+      >
+        {label}
+        <span style={{ opacity: active ? 1 : 0.35, fontSize: '0.75rem' }} aria-hidden>
+          {active ? (dir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function compareInvoices(a, b, sortBy, sortDir) {
+  const mul = sortDir === 'asc' ? 1 : -1;
+  let av;
+  let bv;
+  if (sortBy === 'created_at') {
+    av = a.created_at ? new Date(a.created_at).getTime() : 0;
+    bv = b.created_at ? new Date(b.created_at).getTime() : 0;
+  } else {
+    av = a.invoice_date ? new Date(a.invoice_date).getTime() : 0;
+    bv = b.invoice_date ? new Date(b.invoice_date).getTime() : 0;
+  }
+  if (av !== bv) return (av - bv) * mul;
+  const ca = a.created_at ? new Date(a.created_at).getTime() : 0;
+  const cb = b.created_at ? new Date(b.created_at).getTime() : 0;
+  return (ca - cb) * mul;
+}
 
 export default function ComptaDashboard() {
   const {
@@ -38,17 +85,33 @@ export default function ComptaDashboard() {
   const [loading, setLoading] = useState(false);
   const [rowBusyId, setRowBusyId] = useState(null);
   const [message, setMessage] = useState('');
+  const [sortBy, setSortBy] = useState('invoice_date');
+  const [sortDir, setSortDir] = useState('asc');
+
+  const sortedInvoices = useMemo(
+    () => [...invoices].sort((a, b) => compareInvoices(a, b, sortBy, sortDir)),
+    [invoices, sortBy, sortDir]
+  );
+
+  function toggleSort(field) {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir(field === 'created_at' ? 'desc' : 'asc');
+    }
+  }
 
   function canDownloadInvoice(inv) {
     return inv.ocr_status === 'ok' || inv.ocr_status === 'partial';
   }
 
-  function canDeleteInvoice(inv) {
-    return inv.ocr_status !== 'pending';
+  function canDeleteInvoice() {
+    return true;
   }
 
   function canReanalyzeInvoice(inv) {
-    return inv.ocr_status === 'failed' || inv.ocr_status === 'partial';
+    return inv.ocr_status === 'failed' || inv.ocr_status === 'partial' || inv.ocr_status === 'pending';
   }
 
   async function downloadInvoice(inv) {
@@ -257,9 +320,28 @@ export default function ComptaDashboard() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Factures reçues ce mois</h3>
-        <p className="muted" style={{ marginTop: '-0.25rem', fontSize: '0.85rem' }}>
-          Mise à jour automatique toutes les 5 secondes (WhatsApp inclus).
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 0 }}>Factures reçues ce mois</h3>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', margin: 0 }}>
+            <span className="muted">Trier par</span>
+            <select
+              value={`${sortBy}:${sortDir}`}
+              onChange={(e) => {
+                const [field, dir] = e.target.value.split(':');
+                setSortBy(field);
+                setSortDir(dir);
+              }}
+              style={{ margin: 0, width: 'auto', minWidth: 220 }}
+            >
+              <option value="invoice_date:asc">Date facture · ancienne → récente</option>
+              <option value="invoice_date:desc">Date facture · récente → ancienne</option>
+              <option value="created_at:desc">Reçu le · récent → ancien</option>
+              <option value="created_at:asc">Reçu le · ancien → récent</option>
+            </select>
+          </label>
+        </div>
+        <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+          Mise à jour automatique toutes les 5 secondes (WhatsApp inclus). Cliquez sur les colonnes de date pour trier.
         </p>
         {!hasStatement && invoiceCount > 0 ? (
           <p className="form-hint">
@@ -270,9 +352,19 @@ export default function ComptaDashboard() {
           <table className="table">
             <thead>
               <tr>
-                <th>Reçu le</th>
+                <SortHeader
+                  label="Reçu le"
+                  active={sortBy === 'created_at'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('created_at')}
+                />
                 <th>N° facture</th>
-                <th>Date facture</th>
+                <SortHeader
+                  label="Date facture"
+                  active={sortBy === 'invoice_date'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('invoice_date')}
+                />
                 <th>Fournisseur</th>
                 <th>Montant</th>
                 <th>Analyse</th>
@@ -281,14 +373,14 @@ export default function ComptaDashboard() {
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 && (
+              {sortedInvoices.length === 0 && (
                 <tr>
                   <td colSpan={8} className="muted">
                     Aucune facture pour l&apos;instant. Le client peut en envoyer sur WhatsApp.
                   </td>
                 </tr>
               )}
-              {invoices.map((inv) => (
+              {sortedInvoices.map((inv) => (
                 <tr key={inv.id} className={inv.ocr_status === 'duplicate' ? 'row-duplicate' : undefined}>
                   <td>{formatDateTimeFr(inv.created_at)}</td>
                   <td>{inv.invoice_number || '—'}</td>
@@ -335,9 +427,6 @@ export default function ComptaDashboard() {
                         >
                           Supprimer
                         </ActionButton>
-                      ) : null}
-                      {!canDownloadInvoice(inv) && !canDeleteInvoice(inv) && !canReanalyzeInvoice(inv) ? (
-                        <span className="muted">—</span>
                       ) : null}
                     </div>
                   </td>

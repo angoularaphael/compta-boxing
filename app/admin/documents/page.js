@@ -15,9 +15,28 @@ const TYPE_OPTIONS = [
   { value: 'facture', label: 'Facture' },
 ];
 
+const TVA_PRESETS = [
+  { value: '0', label: '0 %' },
+  { value: '5.5', label: '5,5 %' },
+  { value: '10', label: '10 %' },
+  { value: '20', label: '20 %' },
+  { value: 'custom', label: 'Autre…' },
+];
+
 function formatCurrency(amount) {
-  if (!amount) return '—';
+  if (amount == null || amount === '') return '—';
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(Number(amount));
+}
+
+function computeFromHt(htRaw, tauxRaw) {
+  const ht = Number(htRaw);
+  const taux = Number(tauxRaw);
+  if (!Number.isFinite(ht) || ht <= 0 || !Number.isFinite(taux) || taux < 0) {
+    return { ht: null, tva: null, ttc: null };
+  }
+  const tva = Math.round(ht * taux) / 100;
+  const ttc = Math.round((ht + tva) * 100) / 100;
+  return { ht, tva: Math.round(tva * 100) / 100, ttc };
 }
 
 function formatDate(d) {
@@ -85,11 +104,17 @@ export default function DocumentsPage() {
     client_adresse: '',
     client_telephone: '',
     prestation: '',
-    montant: '',
+    montant_ht: '',
+    taux_tva: '20',
+    taux_tva_custom: '',
     date_document: new Date().toISOString().slice(0, 10),
     reference: '',
     conditions: '',
   });
+
+  const tauxTvaEffective =
+    form.taux_tva === 'custom' ? form.taux_tva_custom : form.taux_tva;
+  const totals = computeFromHt(form.montant_ht, tauxTvaEffective);
 
   const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -120,10 +145,15 @@ export default function DocumentsPage() {
     setMessage('');
     setLoading(true);
     try {
+      const payload = {
+        ...form,
+        taux_tva: tauxTvaEffective,
+      };
+      delete payload.taux_tva_custom;
       const res = await fetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
@@ -140,7 +170,9 @@ export default function DocumentsPage() {
         client_adresse: '',
         client_telephone: '',
         prestation: '',
-        montant: '',
+        montant_ht: '',
+        taux_tva: '20',
+        taux_tva_custom: '',
         reference: '',
         conditions: '',
       }));
@@ -284,15 +316,15 @@ export default function DocumentsPage() {
                 style={{ resize: 'vertical' }}
               />
             </FormField>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.25rem' }}>
-              <FormField label="Montant TTC (€)" required>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginTop: '0.25rem' }}>
+              <FormField label="Montant HT (€)" required>
                 <div style={{ position: 'relative' }}>
                   <input
                     type="number"
                     step="0.01"
                     min="0.01"
-                    value={form.montant}
-                    onChange={(e) => setField('montant', e.target.value)}
+                    value={form.montant_ht}
+                    onChange={(e) => setField('montant_ht', e.target.value)}
                     required
                     placeholder="0.00"
                     style={{ paddingLeft: '2.25rem', fontWeight: 600 }}
@@ -309,6 +341,29 @@ export default function DocumentsPage() {
                   }}>€</span>
                 </div>
               </FormField>
+              <FormField label="Taux de TVA" required>
+                <select
+                  value={form.taux_tva}
+                  onChange={(e) => setField('taux_tva', e.target.value)}
+                >
+                  {TVA_PRESETS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {form.taux_tva === 'custom' && (
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={form.taux_tva_custom}
+                    onChange={(e) => setField('taux_tva_custom', e.target.value)}
+                    required
+                    placeholder="ex. 8.5"
+                    style={{ marginTop: '0.5rem' }}
+                  />
+                )}
+              </FormField>
               <FormField label="Date du document">
                 <input
                   type="date"
@@ -316,6 +371,30 @@ export default function DocumentsPage() {
                   onChange={(e) => setField('date_document', e.target.value)}
                 />
               </FormField>
+            </div>
+            <div style={{
+              marginTop: '1rem',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: '0.75rem',
+              padding: '0.85rem 1rem',
+              borderRadius: 8,
+              background: '#f8fafc',
+              border: '1px solid var(--border)',
+              fontSize: '0.88rem',
+            }}>
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.75rem', fontWeight: 600 }}>TVA</div>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatCurrency(totals.tva)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.75rem', fontWeight: 600 }}>Total HT</div>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatCurrency(totals.ht)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.75rem', fontWeight: 600 }}>Total TTC</div>
+                <div style={{ fontWeight: 800, color: '#15803d' }}>{formatCurrency(totals.ttc)}</div>
+              </div>
             </div>
           </div>
 
@@ -426,7 +505,8 @@ export default function DocumentsPage() {
                     <th>Société</th>
                     <th>Client</th>
                     <th>Prestation</th>
-                    <th style={{ textAlign: 'right' }}>Montant</th>
+                    <th style={{ textAlign: 'right' }}>TTC</th>
+                    <th style={{ textAlign: 'right' }}>TVA</th>
                     <th>Date</th>
                     <th style={{ textAlign: 'center' }}>PDF</th>
                   </tr>
@@ -477,6 +557,10 @@ export default function DocumentsPage() {
                       </td>
                       <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--navy)' }}>
                         {formatCurrency(d.montant)}
+                      </td>
+                      <td style={{ fontSize: '0.85rem', textAlign: 'right', color: '#475569' }}>
+                        {d.taux_tva != null ? `${Number(d.taux_tva)} %` : '—'}
+                        {d.montant_tva != null ? ` · ${formatCurrency(d.montant_tva)}` : ''}
                       </td>
                       <td style={{ fontSize: '0.85rem', color: '#475569' }}>
                         {formatDate(d.date_document)}
