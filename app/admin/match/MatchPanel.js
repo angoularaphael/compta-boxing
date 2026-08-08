@@ -316,56 +316,6 @@ export default function MatchPanel() {
         </div>
       ) : null}
 
-      {allTransactions.length > 0 ? (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Toutes les lignes du relevé ({allTransactions.length})</h3>
-          <p className="muted" style={{ marginTop: '-0.25rem', fontSize: '0.85rem' }}>
-            Doublons inclus. Supprimez une ligne une à une si besoin.
-          </p>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Libellé</th>
-                  <th style={{ textAlign: 'right' }}>Montant</th>
-                  <th>Statut</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allTransactions.map((tx) => (
-                  <tr key={tx.id}>
-                    <td>{tx.tx_date}</td>
-                    <td>{tx.label}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                      {Number(tx.amount).toFixed(2)} €
-                    </td>
-                    <td>
-                      {tx.matched_invoice_id ? (
-                        <span className="ocr-badge ocr-badge--ok">Reliée</span>
-                      ) : (
-                        <span className="ocr-badge ocr-badge--partial">Sans facture</span>
-                      )}
-                    </td>
-                    <td>
-                      <ActionButton
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => deleteTransaction(tx)}
-                        loading={rowBusyId === tx.id}
-                      >
-                        Supprimer
-                      </ActionButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
       <div className="form-row">
         <ActionButton className="btn btn-secondary" onClick={() => load()} loading={loading}>
           Actualiser
