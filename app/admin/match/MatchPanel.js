@@ -26,6 +26,7 @@ export default function MatchPanel() {
   } = useComptaFilters();
   const [unmatchedTx, setUnmatchedTx] = useState([]);
   const [unmatchedInvoices, setUnmatchedInvoices] = useState([]);
+  const [matchedPairs, setMatchedPairs] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
   const [totals, setTotals] = useState(null);
   const [statement, setStatement] = useState(null);
@@ -47,6 +48,7 @@ export default function MatchPanel() {
       if (!matchRes.ok) throw new Error(data.error);
       setUnmatchedTx(data.unmatchedTx || []);
       setUnmatchedInvoices(data.unmatchedInvoices || []);
+      setMatchedPairs(data.matchedPairs || []);
       setTotals(data.totals || null);
       setStatement(stData.statement || null);
       setAllTransactions(stData.transactions || []);
@@ -133,6 +135,46 @@ export default function MatchPanel() {
     } finally {
       setRowBusyId(null);
     }
+  }
+
+  async function unlinkPair(pair) {
+    const tx = pair.transaction;
+    const inv = pair.invoice;
+    const invLabel = inv
+      ? `${inv.vendor_name || inv.file_name || 'facture'} (${inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'})`
+      : 'facture';
+    if (
+      !window.confirm(
+        `Délier cette association ?\nRelevé : ${tx.tx_date} — ${Number(tx.amount).toFixed(2)} € — ${tx.label}\n↔ ${invLabel}\n\nLes deux lignes reviendront dans les listes « sans facture / sans relevé ».`
+      )
+    ) {
+      return;
+    }
+    setRowBusyId(tx.id);
+    setMessage('');
+    try {
+      const res = await fetch('/api/match', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: tx.id, action: 'unlink' }),
+      });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'Déliaison impossible');
+      setMessage('Liaison annulée — vous pouvez en refaire une autre.');
+      await load({ silent: true });
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  function matchTypeLabel(type) {
+    if (type === 'manual') return 'manuel';
+    if (type === 'auto_vendor_amount' || type === 'auto' || (type && String(type).startsWith('auto'))) {
+      return 'auto';
+    }
+    return type || 'lié';
   }
 
   async function uploadStatement(e) {
@@ -240,6 +282,7 @@ export default function MatchPanel() {
           <li><strong>Importer le relevé bancaire</strong> (PDF de la banque)</li>
           <li>L&apos;app montre les <strong>dépenses sans facture</strong> et les <strong>factures sans dépense</strong></li>
           <li>Si tu sais que deux lignes vont ensemble : clique l&apos;une puis l&apos;autre → <strong>C&apos;est la même</strong></li>
+          <li>En bas : les liaisons déjà faites — <strong>Délier</strong> si une erreur a été faite</li>
         </ol>
       </div>
 
@@ -307,6 +350,7 @@ export default function MatchPanel() {
           <div className="compta-stat">
             <span>Déjà reliées</span>
             <strong>{totals.matchedExpenses.toFixed(2)} €</strong>
+            <span className="muted">{totals.matchedCount ?? matchedPairs.length} liaison(s)</span>
           </div>
           <div className="compta-stat">
             <span>Factures non reliées</span>
@@ -381,6 +425,70 @@ export default function MatchPanel() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="card matched-pairs-card">
+        <h3 style={{ marginTop: 0 }}>Déjà liées ({matchedPairs.length})</h3>
+        <p className="muted">
+          Liaisons relevé ↔ facture. Si une erreur a été faite, cliquez <strong>Délier</strong> puis refaites le bon couple.
+        </p>
+        <div className="match-list match-list--matched">
+          {matchedPairs.length === 0 && (
+            <p className="muted" style={{ padding: '0.75rem' }}>
+              Aucune liaison pour l&apos;instant.
+            </p>
+          )}
+          {matchedPairs.map((pair) => {
+            const tx = pair.transaction;
+            const inv = pair.invoice;
+            return (
+              <div key={tx.id} className="match-item match-item--linked">
+                <div className="matched-pair-row">
+                  <div className="matched-pair-sides">
+                    <div>
+                      <span className="matched-pair-tag">Relevé</span>
+                      <strong>{Number(tx.amount).toFixed(2)} €</strong> — {tx.tx_date}
+                      <br />
+                      <span className="muted">{tx.label}</span>
+                    </div>
+                    <div className="matched-pair-arrow" aria-hidden>
+                      ↔
+                    </div>
+                    <div>
+                      <span className="matched-pair-tag">Facture</span>
+                      {inv ? (
+                        <>
+                          <strong>
+                            {inv.amount_ttc != null ? `${Number(inv.amount_ttc).toFixed(2)} €` : '—'}
+                          </strong>{' '}
+                          — {inv.invoice_date || '—'}
+                          <br />
+                          <span className="muted">{inv.vendor_name || inv.file_name}</span>
+                        </>
+                      ) : (
+                        <span className="muted">Facture introuvable (id {tx.matched_invoice_id})</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="matched-pair-actions">
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      {matchTypeLabel(pair.matchType)}
+                      {pair.confidence != null ? ` · ${Math.round(Number(pair.confidence) * 100)}%` : ''}
+                    </span>
+                    <ActionButton
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => unlinkPair(pair)}
+                      loading={rowBusyId === tx.id}
+                    >
+                      Délier
+                    </ActionButton>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

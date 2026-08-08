@@ -34,7 +34,13 @@ export async function GET(request) {
         '("duplicate","failed","pending")'
       ),
       statement
-        ? sb.from('bank_transactions').select('*').eq('statement_id', statement.id)
+        ? sb
+            .from('bank_transactions')
+            .select(
+              '*, invoice:matched_invoice_id(id, file_name, vendor_name, amount_ttc, invoice_date)'
+            )
+            .eq('statement_id', statement.id)
+            .order('tx_date', { ascending: true })
         : Promise.resolve({ data: [] }),
       sb.from('vendor_aliases').select('*').or(`location_id.is.null,location_id.eq.${location.id}`),
     ]);
@@ -44,6 +50,17 @@ export async function GET(request) {
     const matchedIds = new Set(txs.filter((t) => t.matched_invoice_id).map((t) => t.matched_invoice_id));
     const unmatchedTx = txs.filter((t) => !t.matched_invoice_id);
     const unmatchedInvoices = invs.filter((i) => !matchedIds.has(i.id));
+    const matchedPairs = txs
+      .filter((t) => t.matched_invoice_id)
+      .map((t) => {
+        const { invoice, ...transaction } = t;
+        return {
+          transaction,
+          invoice: invoice || null,
+          matchType: t.match_type || null,
+          confidence: t.match_confidence ?? null,
+        };
+      });
 
     const sumAmounts = (rows) =>
       rows.reduce((sum, row) => sum + Math.abs(Number(row.amount ?? row.amount_ttc) || 0), 0);
@@ -54,16 +71,50 @@ export async function GET(request) {
       unmatchedExpenses: Math.round(sumAmounts(unmatchedTx) * 100) / 100,
       matchedExpenses: Math.round(sumAmounts(txs.filter((t) => t.matched_invoice_id)) * 100) / 100,
       unmatchedInvoices: Math.round(sumAmounts(unmatchedInvoices) * 100) / 100,
+      matchedCount: matchedPairs.length,
     };
 
     return NextResponse.json({
       unmatchedTx,
       unmatchedInvoices,
+      matchedPairs,
       aliases: aliases || [],
       totals,
       hasStatement: Boolean(statement),
       statementMonth: month,
     });
+  } catch (err) {
+    return apiError(err);
+  }
+}
+
+/** Délie une ligne du relevé de sa facture (sans supprimer la ligne). */
+export async function PATCH(request) {
+  try {
+    await requireSession();
+    const body = await request.json().catch(() => ({}));
+    const { transactionId, action = 'unlink' } = body;
+    if (!transactionId) {
+      return NextResponse.json({ error: 'transactionId requis' }, { status: 400 });
+    }
+    if (action !== 'unlink') {
+      return NextResponse.json({ error: 'action non supportée' }, { status: 400 });
+    }
+
+    const sb = getSupabase();
+    const { data: tx, error } = await sb
+      .from('bank_transactions')
+      .update({
+        matched_invoice_id: null,
+        match_type: null,
+        match_confidence: null,
+      })
+      .eq('id', transactionId)
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    return NextResponse.json({ transaction: tx, unlinked: true });
   } catch (err) {
     return apiError(err);
   }
