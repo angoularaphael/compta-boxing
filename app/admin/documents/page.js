@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import ActionButton from '../../components/ActionButton';
 import { parseApiJson } from '../../../lib/apiJson';
+import { resolveDocumentAmounts } from '../../../lib/document-amounts';
 
 const SOCIETE_OPTIONS = [
   { value: 'asso_tmbc', label: 'ASSO TMBC' },
@@ -157,11 +158,20 @@ export default function DocumentsPage() {
       });
       const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error);
+      if (totals.ht == null || totals.tva == null || totals.ttc == null) {
+        throw new Error('Montant ou taux de TVA invalide');
+      }
 
       setMessage(`${data.document.type === 'devis' ? 'Devis' : 'Facture'} ${data.document.numero} créé(e) avec succès`);
       setMsgType('ok');
 
-      window.open(`/api/documents/${data.document.id}/pdf`, '_blank');
+      const pdfQs = new URLSearchParams({
+        taux: String(Number(tauxTvaEffective)),
+        ht: String(totals.ht),
+        tva: String(totals.tva),
+        ttc: String(totals.ttc),
+      });
+      window.open(`/api/documents/${data.document.id}/pdf?${pdfQs}`, '_blank');
 
       setForm((f) => ({
         ...f,
@@ -510,7 +520,9 @@ export default function DocumentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {documents.map((d) => (
+                  {documents.map((d) => {
+                    const amounts = resolveDocumentAmounts(d);
+                    return (
                     <tr key={d.id}>
                       <td>
                         <code style={{
@@ -554,11 +566,11 @@ export default function DocumentsPage() {
                         {d.prestation}
                       </td>
                       <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--navy)' }}>
-                        {formatCurrency(d.montant)}
+                        {formatCurrency(amounts.ttc)}
                       </td>
                       <td style={{ fontSize: '0.85rem', textAlign: 'right', color: '#475569' }}>
-                        {d.taux_tva != null ? `${Number(d.taux_tva)} %` : '—'}
-                        {d.montant_tva != null ? ` · ${formatCurrency(d.montant_tva)}` : ''}
+                        {`${amounts.taux} %`}
+                        {` · ${formatCurrency(amounts.tva)}`}
                       </td>
                       <td style={{ fontSize: '0.85rem', color: '#475569' }}>
                         {formatDate(d.date_document)}
@@ -581,7 +593,8 @@ export default function DocumentsPage() {
                         </a>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

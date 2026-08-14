@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
-import { fetchDocumentById, parseTauxTva, SOCIETES } from '../../../../../lib/documents.js';
+import { fetchDocumentById, SOCIETES } from '../../../../../lib/documents.js';
+import { resolveDocumentAmounts, stripTvaSnapshot } from '../../../../../lib/document-amounts.js';
 
 const PAGE = { width: 595.28, height: 841.89 };
 const MARGIN = 40;
@@ -56,42 +57,12 @@ function formatDateFr(dateStr) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }).format(d);
 }
 
-function resolveAmounts(doc) {
-  let taux;
-  try {
-    taux = parseTauxTva(doc.taux_tva, 20);
-  } catch {
-    taux = 20;
-  }
-  let ht = doc.montant_ht != null && doc.montant_ht !== '' ? Number(doc.montant_ht) : null;
-  let tva = doc.montant_tva != null && doc.montant_tva !== '' ? Number(doc.montant_tva) : null;
-  let ttc = doc.montant != null && doc.montant !== '' ? Number(doc.montant) : null;
-
-  if (ht == null && ttc != null && Number.isFinite(taux)) {
-    ht = Math.round((ttc / (1 + taux / 100)) * 100) / 100;
-  }
-  if (tva == null && ht != null && ttc != null) {
-    tva = Math.round((ttc - ht) * 100) / 100;
-  }
-  if (ttc == null && ht != null) {
-    tva = tva != null ? tva : Math.round((ht * taux) / 100 * 100) / 100;
-    ttc = Math.round((ht + tva) * 100) / 100;
-  }
-
-  return {
-    ht: ht ?? 0,
-    tva: tva ?? 0,
-    ttc: ttc ?? 0,
-    taux: Number.isFinite(taux) ? taux : 20,
-  };
-}
-
 /** Texte absolu sans faire défiler le flux (évite page 2). */
 function absText(pdf, str, x, y, opts = {}) {
   pdf.text(String(str ?? ''), x, y, { lineBreak: false, ...opts });
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   const { id } = params;
 
   const doc = await fetchDocumentById(id);
@@ -99,11 +70,18 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ ok: false, error: 'Document introuvable' }, { status: 404 });
   }
 
+  const { searchParams } = new URL(request.url);
   const societe = SOCIETES[doc.societe] || SOCIETES.boxing_center;
   const theme = themeFor(doc.societe);
   const isDevis = doc.type === 'devis';
   const title = isDevis ? 'DEVIS' : 'FACTURE';
-  const amounts = resolveAmounts(doc);
+  const amounts = resolveDocumentAmounts(doc, {
+    taux: searchParams.get('taux'),
+    ht: searchParams.get('ht'),
+    tva: searchParams.get('tva'),
+    ttc: searchParams.get('ttc'),
+  });
+  const conditionsText = stripTvaSnapshot(doc.conditions);
 
   const pdf = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, autoFirstPage: true });
   const chunks = [];
@@ -246,13 +224,13 @@ export async function GET(_request, { params }) {
 
   y = totalY + 14;
 
-  if (doc.conditions) {
+  if (conditionsText) {
     pdf.font('Helvetica-Bold').fontSize(8).fillColor(theme.muted);
     absText(pdf, 'CONDITIONS', MARGIN, y);
     y += 12;
     pdf.font('Helvetica').fontSize(9).fillColor(theme.text);
-    pdf.text(doc.conditions, MARGIN, y, { width: CONTENT_W, height: 48, ellipsis: true });
-    y += Math.min(pdf.heightOfString(doc.conditions, { width: CONTENT_W }), 48) + 8;
+    pdf.text(conditionsText, MARGIN, y, { width: CONTENT_W, height: 48, ellipsis: true });
+    y += Math.min(pdf.heightOfString(conditionsText, { width: CONTENT_W }), 48) + 8;
   }
 
   if (isDevis) {
@@ -304,6 +282,7 @@ export async function GET(_request, { params }) {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${doc.numero}.pdf"`,
+      'Cache-Control': 'private, no-store',
     },
   });
 }
