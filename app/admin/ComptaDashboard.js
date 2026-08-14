@@ -304,6 +304,29 @@ export default function ComptaDashboard() {
     }
   }
 
+  async function exportDossier() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/export?location=${location}&month=${month}&format=zip`);
+      if (!res.ok) {
+        const data = await parseApiJson(res);
+        throw new Error(data.error);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dossier-compta-${location}-${month}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage('Dossier téléchargé — relevé + factures classées par date.');
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function exportMonth() {
     setLoading(true);
     try {
@@ -384,11 +407,16 @@ export default function ComptaDashboard() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Télécharger pour le comptable</h3>
           <p className="muted">
-            Un seul PDF : toutes les factures fusionnées comme un merge iLovePDF, classées de la plus ancienne à la plus récente.
+            Un ZIP pour le comptable : relevé bancaire + factures classées par date (plus ancienne → plus récente).
           </p>
-          <ActionButton className="btn" onClick={exportMonth} loading={loading}>
-            Télécharger le PDF du mois
-          </ActionButton>
+          <div className="table-row-actions">
+            <ActionButton className="btn" onClick={exportDossier} loading={loading}>
+              Télécharger le dossier complet
+            </ActionButton>
+            <ActionButton className="btn btn-secondary" onClick={exportMonth} loading={loading}>
+              PDF fusionné
+            </ActionButton>
+          </div>
         </div>
       </div>
 

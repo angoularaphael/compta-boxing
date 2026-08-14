@@ -277,6 +277,30 @@ export default function MatchPanel() {
     }
   }
 
+  async function downloadDossier() {
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/export?location=${location}&month=${month}&format=zip`);
+      if (!res.ok) {
+        const data = await parseApiJson(res);
+        throw new Error(data.error || 'Téléchargement impossible');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dossier-compta-${location}-${month}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage('Dossier téléchargé — relevé + factures classées par date.');
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function linkManual() {
     if (!selectedTx || !selectedInv) {
       setMessage('Cliquez d\'abord sur une ligne du relevé, puis sur une facture.');
@@ -411,6 +435,9 @@ export default function MatchPanel() {
         </ActionButton>
         <ActionButton className="btn" onClick={linkManual} loading={loading} disabled={!selectedTx || !selectedInv}>
           C&apos;est la même dépense
+        </ActionButton>
+        <ActionButton className="btn btn-secondary" onClick={downloadDossier} loading={loading}>
+          Télécharger le dossier complet
         </ActionButton>
       </div>
 
