@@ -103,6 +103,14 @@
   flex-shrink: 0;
 }
 
+.compta-match-page .match-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
 @media (max-width: 700px) {
   .matched-pair-row {
     flex-direction: column;

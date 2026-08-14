@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ActionButton from '../../components/ActionButton';
 import ComptaFiltersCard from '../../components/ComptaFiltersCard';
 import { useComptaFilters } from '../../hooks/useComptaFilters';
@@ -35,6 +35,8 @@ export default function MatchPanel() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [rowBusyId, setRowBusyId] = useState(null);
+  const invoiceFileInputRef = useRef(null);
+  const uploadTxRef = useRef(null);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -110,6 +112,43 @@ export default function MatchPanel() {
       setMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startUploadInvoice(tx) {
+    uploadTxRef.current = tx;
+    invoiceFileInputRef.current?.click();
+  }
+
+  async function uploadInvoiceForLine(e) {
+    const file = e.target.files?.[0];
+    const tx = uploadTxRef.current;
+    e.target.value = '';
+    uploadTxRef.current = null;
+    if (!file || !tx) return;
+
+    setRowBusyId(tx.id);
+    setMessage('');
+    try {
+      const fd = new FormData();
+      fd.append('location_slug', location);
+      fd.append('accounting_month', month);
+      fd.append('transaction_id', tx.id);
+      fd.append('file', file);
+      const res = await fetch('/api/invoices', { method: 'POST', body: fd });
+      const data = await parseApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'Upload impossible');
+      setMessage(
+        data.matched
+          ? 'Facture ajoutée et liée à la ligne — elle disparaît des dépenses sans facture.'
+          : 'Facture ajoutée. Liez-la ensuite à la ligne.'
+      );
+      if (selectedTx === tx.id) setSelectedTx(null);
+      await load({ silent: true });
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setRowBusyId(null);
     }
   }
 
@@ -281,7 +320,13 @@ export default function MatchPanel() {
           </li>
           <li><strong>Importer le relevé bancaire</strong> (PDF de la banque)</li>
           <li>L&apos;app montre les <strong>dépenses sans facture</strong> et les <strong>factures sans dépense</strong></li>
-          <li>Si tu sais que deux lignes vont ensemble : clique l&apos;une puis l&apos;autre → <strong>C&apos;est la même</strong></li>
+          <li>
+            Si tu sais que deux lignes vont ensemble : clique l&apos;une puis l&apos;autre → <strong>C&apos;est la même</strong>
+          </li>
+          <li>
+            Ou <strong>Ajouter</strong> à côté d&apos;une dépense pour uploader la facture : elle est liée et la ligne
+            sort de la liste
+          </li>
           <li>En bas : les liaisons déjà faites — <strong>Délier</strong> si une erreur a été faite</li>
         </ol>
       </div>
@@ -372,7 +417,21 @@ export default function MatchPanel() {
       <div className="match-lists">
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Dépenses sur le relevé sans facture ({unmatchedTx.length})</h3>
-          <p className="muted">Argent sorti du compte — pas encore de facture trouvée. Cliquez pour lier, ou supprimez.</p>
+          <p className="muted">
+            Argent sorti du compte — pas encore de facture. Cliquez pour lier, <strong>Ajouter</strong> pour uploader
+            la facture (la ligne passe dans « Déjà liées »), ou supprimez.
+          </p>
+          <input
+            ref={invoiceFileInputRef}
+            className="compta-file-input"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={uploadInvoiceForLine}
+            disabled={loading}
+            style={{ display: 'none' }}
+            tabIndex={-1}
+            aria-hidden="true"
+          />
           <div className="match-list">
             {unmatchedTx.length === 0 && (
               <p className="muted" style={{ padding: '0.75rem' }}>
@@ -391,17 +450,30 @@ export default function MatchPanel() {
                     <br />
                     <span className="muted">{tx.label}</span>
                   </div>
-                  <ActionButton
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteTransaction(tx);
-                    }}
-                    loading={rowBusyId === tx.id}
-                  >
-                    Supprimer
-                  </ActionButton>
+                  <div className="match-item-actions">
+                    <ActionButton
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startUploadInvoice(tx);
+                      }}
+                      loading={rowBusyId === tx.id}
+                    >
+                      Ajouter
+                    </ActionButton>
+                    <ActionButton
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteTransaction(tx);
+                      }}
+                      loading={rowBusyId === tx.id}
+                    >
+                      Supprimer
+                    </ActionButton>
+                  </div>
                 </div>
               </div>
             ))}

@@ -55,6 +55,9 @@ export async function POST(request) {
     const { data: location } = await sb.from('locations').select('*').eq('slug', locationSlug).maybeSingle();
     if (!location) return NextResponse.json({ error: 'Salle inconnue' }, { status: 404 });
 
+    const accountingMonth = parseAccountingMonth(String(form.get('accounting_month') || '').trim());
+    const transactionId = String(form.get('transaction_id') || '').trim();
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileName = file.name || 'facture.pdf';
     const mimeType = file.type || 'application/pdf';
@@ -66,11 +69,42 @@ export async function POST(request) {
       mimeType,
       source: 'upload',
       deferOcr: true,
+      accountingMonth,
     });
 
     waitUntil(applyInvoiceOcr(invoice.id, buffer, mimeType, fileName));
 
-    return NextResponse.json({ invoice, ocrPending: true });
+    let matched = false;
+    if (transactionId) {
+      const { data: tx, error: txErr } = await sb
+        .from('bank_transactions')
+        .select('id, matched_invoice_id')
+        .eq('id', transactionId)
+        .maybeSingle();
+      if (txErr) throw txErr;
+      if (!tx) {
+        return NextResponse.json({ error: 'Ligne du relevé introuvable' }, { status: 404 });
+      }
+      if (tx.matched_invoice_id) {
+        return NextResponse.json(
+          { error: 'Cette ligne est déjà liée à une facture', invoice, ocrPending: true },
+          { status: 409 }
+        );
+      }
+      const { error: matchErr } = await sb
+        .from('bank_transactions')
+        .update({
+          matched_invoice_id: invoice.id,
+          match_type: 'manual',
+          match_confidence: 1,
+        })
+        .eq('id', transactionId)
+        .is('matched_invoice_id', null);
+      if (matchErr) throw matchErr;
+      matched = true;
+    }
+
+    return NextResponse.json({ invoice, ocrPending: true, matched });
   } catch (err) {
     return apiError(err);
   }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
-import { fetchDocumentById, SOCIETES } from '../../../../../lib/documents.js';
+import { fetchDocumentById, parseTauxTva, SOCIETES } from '../../../../../lib/documents.js';
 
 const PAGE = { width: 595.28, height: 841.89 };
 const MARGIN = 40;
@@ -57,10 +57,15 @@ function formatDateFr(dateStr) {
 }
 
 function resolveAmounts(doc) {
-  const taux = Number(doc.taux_tva ?? 20);
-  let ht = doc.montant_ht != null ? Number(doc.montant_ht) : null;
-  let tva = doc.montant_tva != null ? Number(doc.montant_tva) : null;
-  let ttc = doc.montant != null ? Number(doc.montant) : null;
+  let taux;
+  try {
+    taux = parseTauxTva(doc.taux_tva, 20);
+  } catch {
+    taux = 20;
+  }
+  let ht = doc.montant_ht != null && doc.montant_ht !== '' ? Number(doc.montant_ht) : null;
+  let tva = doc.montant_tva != null && doc.montant_tva !== '' ? Number(doc.montant_tva) : null;
+  let ttc = doc.montant != null && doc.montant !== '' ? Number(doc.montant) : null;
 
   if (ht == null && ttc != null && Number.isFinite(taux)) {
     ht = Math.round((ttc / (1 + taux / 100)) * 100) / 100;

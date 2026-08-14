@@ -147,7 +147,7 @@ export default function DocumentsPage() {
     try {
       const payload = {
         ...form,
-        taux_tva: tauxTvaEffective,
+        taux_tva: Number(tauxTvaEffective),
       };
       delete payload.taux_tva_custom;
       const res = await fetch('/api/documents', {
@@ -171,8 +171,6 @@ export default function DocumentsPage() {
         client_telephone: '',
         prestation: '',
         montant_ht: '',
-        taux_tva: '20',
-        taux_tva_custom: '',
         reference: '',
         conditions: '',
       }));
