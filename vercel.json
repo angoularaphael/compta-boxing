@@ -1,5 +1,13 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "$schema": "https://openapi.vercel.sh/schema.json",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "compta-boxing.vercel.app" }],
+      "destination": "https://compta.boxingcenter.fr/$1",
+      "permanent": true
+    }
+  ],
   "functions": {
     "app/api/bots/[slug]/route.js": {
       "maxDuration": 30
