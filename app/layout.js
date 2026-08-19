@@ -20,12 +20,13 @@ export const metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.svg?v=bc5', type: 'image/svg+xml' },
+      { url: '/favicon.ico?v=bc5', sizes: 'any' },
+      { url: '/favicon.png?v=bc5', sizes: '48x48', type: 'image/png' },
+      { url: '/icons/icon-192.png?v=bc5', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png?v=bc5', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: '/icons/apple-touch-icon.png?v=bc5', sizes: '180x180', type: 'image/png' }],
   },
 };
 
