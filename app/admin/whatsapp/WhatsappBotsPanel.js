@@ -156,12 +156,12 @@ function BotCard({ bot }) {
       </div>
 
       {!status.loading && status.connected ? (
-        <p className="muted">Le numéro WhatsApp de cette salle est prêt. Le client peut envoyer ses factures en photo.</p>
+        <p className="muted">Le numéro WhatsApp est prêt. Le client peut envoyer ses factures en photo.</p>
       ) : null}
 
       {showQr ? (
         <div className="compta-qr-wrap">
-          <p><strong>Scannez ce QR code</strong> avec le téléphone du numéro WhatsApp de cette salle :</p>
+          <p><strong>Scannez ce QR code</strong> avec le téléphone du numéro WhatsApp compta :</p>
           <p className="muted">WhatsApp → ⋮ → Appareils connectés → Connecter un appareil</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={status.qr} alt={`QR WhatsApp ${bot.label}`} className="compta-qr-img" />
@@ -188,8 +188,8 @@ function BotCard({ bot }) {
           {!qrMode && status.configured === false ? (
             <ol className="compta-steps">
               <li>Sur Bothosting : lancer le bot (index.js + .env)</li>
-              <li>Dans Supabase : renseigner <code>bot_url</code> pour cette salle</li>
-              <li>Ou sur Vercel : variable <code>{`BOT_URL_${bot.slug.toUpperCase()}`}</code></li>
+              <li>Dans Supabase : renseigner <code>bot_url</code> pour Minimes</li>
+              <li>Ou sur Vercel : variable <code>BOT_URL_MINIMES</code></li>
             </ol>
           ) : null}
         </div>
@@ -235,9 +235,9 @@ export default function WhatsappBotsPanel() {
       <div className="ik-generator-hero">
         <div>
           <p className="ik-generator-eyebrow">Étape 0 — une seule fois</p>
-          <h1>Connecter les 3 WhatsApp</h1>
+          <h1>Connecter WhatsApp</h1>
           <p className="ik-generator-lead">
-            Pour chaque salle : <strong>Générer le QR</strong> → scanner → attendre <strong>WhatsApp connecté ✓</strong>.
+            <strong>Générer le QR</strong> → scanner → attendre <strong>WhatsApp connecté ✓</strong>.
           </p>
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function WhatsappBotsPanel() {
         <h3 style={{ marginTop: 0 }}>Comment ça marche pour le client ?</h3>
         <ol className="compta-steps compta-steps--big">
           <li>Il <strong>photographie</strong> une facture avec son téléphone</li>
-          <li>Il l&apos;envoie sur <strong>le bon numéro WhatsApp</strong> (Bot 1, 2 ou 3)</li>
+          <li>Il l&apos;envoie sur <strong>le numéro WhatsApp compta</strong></li>
           <li>Le bot répond « Facture reçue » — c&apos;est tout</li>
         </ol>
       </div>
